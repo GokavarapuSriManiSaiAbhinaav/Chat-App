@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Message from "./Message";
 import MoodHint from './MoodHint';
@@ -6,8 +6,8 @@ import { detectMood } from '../utils/moodDetector';
 import UserSearch from "./UserSearch";
 import EmptyState from "./EmptyState";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc, deleteDoc, updateDoc, writeBatch, limit, getDocs, where, increment } from "firebase/firestore";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage"; // Storage imports
-import { db, auth, storage } from "../firebase";
+import { db, auth } from "../firebase";
+import { uploadToCloudinary } from "../utils/cloudinary";
 import { IoSend, IoMic, IoStop, IoTrash, IoAttach, IoArrowBack, IoClose, IoPeople, IoPersonAdd } from "react-icons/io5";
 import { MdEmojiEmotions, MdDelete } from 'react-icons/md';
 const EmojiPicker = React.lazy(() => import('emoji-picker-react'));
@@ -38,9 +38,9 @@ const ChatRoom = (props) => {
     const fileInputRef = useRef(null);
 
     // Helper: Generate deterministic chat ID
-    const getChatId = (uid1, uid2) => {
+    const getChatId = useCallback((uid1, uid2) => {
         return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
-    };
+    }, []);
 
     // Effect: Listen to Chat Document for Typing Status
     useEffect(() => {
@@ -191,7 +191,7 @@ const ChatRoom = (props) => {
         return date.toLocaleDateString();
     };
 
-    const handleSelectUser = async (user) => {
+    const handleSelectUser = useCallback(async (user) => {
         if (!user) return;
 
         setSelectedUser(user);
@@ -221,7 +221,7 @@ const ChatRoom = (props) => {
 
         setChatId(newChatId);
         setShowEmojiPicker(false);
-    };
+    }, [getChatId, setSelectedUser]);
 
     const handleDeleteGroup = async () => {
         if (!window.confirm("Are you sure you want to delete this group? This will remove all messages for everyone.")) return;
@@ -351,42 +351,29 @@ const ChatRoom = (props) => {
         setUploadError(null);
 
         try {
-            // 1. Prepare Storage Reference
-            const messageId = `${Date.now()}_${uid}`;
-            const ext = audioBlob.type.includes('ogg') ? 'ogg' :
-                audioBlob.type.includes('mp4') ? 'mp4' : 'webm';
+            // 1. Prepare Storage Reference - REMOVED for Cloudinary
+            // const messageId = `${Date.now()}_${uid}`;
+            // const ext = audioBlob.type.includes('ogg') ? 'ogg' :
+            //     audioBlob.type.includes('mp4') ? 'mp4' : 'webm';
 
-            const storageRef = ref(storage, `voiceMessages/${chatId}/${messageId}.${ext}`);
+            // const storageRef = ref(storage, `voiceMessages/${chatId}/${messageId}.${ext}`);
 
 
-            // 2. Upload using uploadBytesResumable (Firebase SDK managed)
-            // We add metadata to help the SDK/Server handle the content-type correctly
-            const metadata = {
-                contentType: audioBlob.type,
-            };
+            // 2. Upload using Cloudinary
+            // We removed uploadBytesResumable
+            // const metadata = {
+            //     contentType: audioBlob.type,
+            // };
 
-            const uploadTask = uploadBytesResumable(storageRef, audioBlob, metadata);
+            // const uploadTask = uploadBytesResumable(storageRef, audioBlob, metadata);
+            // We do direct upload now
 
-            // Convert uploadTask transition to Promise for easier async/await handling
-            const audioUrl = await new Promise((resolve, reject) => {
-                uploadTask.on(
-                    'state_changed',
-                    (snapshot) => {
-                        // Progress track can be added to UI if needed
-                    },
-                    (error) => {
-                        reject(error);
-                    },
-                    async () => {
-                        try {
-                            const url = await getDownloadURL(uploadTask.snapshot.ref);
-                            resolve(url);
-                        } catch (err) {
-                            reject(err);
-                        }
-                    }
-                );
-            });
+
+
+
+            // Start Cloudinary Upload
+            const audioUrl = await uploadToCloudinary(audioBlob, 'video'); // Cloudinary handles audio as video or raw usually, 'video' is safer for audio playback
+
 
             // 3. Add to Firestore
             const collectionRef = collection(db, "chats", chatId, "messages");
@@ -442,42 +429,25 @@ const ChatRoom = (props) => {
 
         try {
             const messageId = `${Date.now()}_${uid}`;
-            const fileType = file.type.startsWith('image/') ? 'image' :
-                file.type.startsWith('video/') ? 'video' : 'file';
-
-            if (fileType === 'file') {
-                throw new Error("Only images and videos are supported for now.");
+            const fileType = 'image'; // Enforce image only as per req (or check if user selects video but we only support image in UI)
+            if (!file.type.startsWith('image/')) {
+                throw new Error("Only images are supported.");
             }
 
-            const storageRef = ref(storage, `media/${chatId}/${messageId}_${file.name}`);
-            const metadata = { contentType: file.type };
+            // Removed 'file' type check block as we check above
 
-            console.log(`Uploading ${file.size} bytes (${fileType})...`);
 
-            const uploadTask = uploadBytesResumable(storageRef, file, metadata);
+            // Cloudinary Upload
+            // console.log(`Uploading ${file.size} bytes (${fileType})...`);
 
-            const downloadUrl = await new Promise((resolve, reject) => {
-                uploadTask.on(
-                    'state_changed',
-                    () => { },
-                    (error) => reject(error),
-                    async () => {
-                        try {
-                            const url = await getDownloadURL(uploadTask.snapshot.ref);
-                            resolve(url);
-                        } catch (err) {
-                            reject(err);
-                        }
-                    }
-                );
-            });
+            const imageUrl = await uploadToCloudinary(file, 'image');
 
             const collectionRef = collection(db, "chats", chatId, "messages");
             const chatDocRef = doc(db, "chats", chatId);
 
             await addDoc(collectionRef, {
                 text: "",
-                mediaUrl: downloadUrl,
+                imageUrl: imageUrl, // Changed from mediaUrl to imageUrl as per req
                 type: fileType,
                 fileName: file.name,
                 createdAt: serverTimestamp(),
@@ -578,16 +548,9 @@ const ChatRoom = (props) => {
         }
     };
 
-    const onEmojiClick = (emojiObject) => {
-        // We manually update typing status for emoji clicks too if we want, 
-        // but typically typing indicators are for keypresses.
-        // Let's trigger it just in case:
-        const newValue = formValue + emojiObject.emoji;
-        setFormValue(newValue);
-        // Simulate event for handler? simpler to just reuse logic or extract it.
-        // For now, let's just update value. 
-        // If users want typing indicator on emoji click, they'll type afterwards or hit send.
-    };
+    const onEmojiClick = useCallback((emojiObject) => {
+        setFormValue(prev => prev + emojiObject.emoji);
+    }, []);
 
     const handleKeyDown = () => { };
 
@@ -721,7 +684,7 @@ const ChatRoom = (props) => {
 
                                 <input
                                     type="file"
-                                    accept="image/*,video/*"
+                                    accept="image/png, image/jpeg, image/webp"
                                     style={{ display: 'none' }}
                                     ref={fileInputRef}
                                     onChange={handleMediaUpload}

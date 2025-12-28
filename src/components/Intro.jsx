@@ -24,8 +24,8 @@ const Intro = ({ onFinish }) => {
                 ))}
             </div>
             <div className="intro-content">
-                <h1 className="intro-title" data-text="YOU & ME">
-                    YOU <span className="ampersand">&</span> ME
+                <h1 className="intro-title" data-text="U & ME">
+                    U <span className="ampersand">&</span> ME
                 </h1>
 
                 <p className="intro-subtitle">created by ABHI</p>

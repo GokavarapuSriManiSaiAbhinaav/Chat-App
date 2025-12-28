@@ -5,8 +5,8 @@ import { IoTrash, IoPlay, IoPause, IoCheckmarkDone, IoCheckmark } from 'react-ic
 import { auth } from '../firebase';
 import './Message.css';
 
-const Message = ({ message, onDelete }) => {
-    const { text, uid, photoURL, createdAt, type, audioUrl, mediaUrl, fileName, read } = message;
+const Message = React.memo(({ message, onDelete }) => {
+    const { text, uid, photoURL, createdAt, type, audioUrl, mediaUrl, imageUrl, fileName, read } = message;
     const isSent = uid === auth.currentUser.uid;
     const [isPlaying, setIsPlaying] = useState(false);
     const audioRef = React.useRef(null);
@@ -41,7 +41,7 @@ const Message = ({ message, onDelete }) => {
             }}
             className={`message-wrapper ${isSent ? 'sent' : 'received'}`}
         >
-            {!isSent && <img className="message-avatar" src={photoURL} alt="avatar" />}
+            {!isSent && <img className="message-avatar" src={photoURL} alt="avatar" loading="lazy" />}
 
             <div className="message-content-wrapper">
                 <motion.div
@@ -66,19 +66,26 @@ const Message = ({ message, onDelete }) => {
                                 src={audioUrl}
                                 onEnded={() => setIsPlaying(false)}
                                 style={{ display: 'none' }}
+                                preload="none"
                             />
                         </div>
                     )}
 
                     {type === 'image' && (
                         <div className="media-message">
-                            <img src={mediaUrl} alt="media" className="message-image" />
+                            <img
+                                src={imageUrl || mediaUrl}
+                                alt="media"
+                                className="message-image"
+                                loading="lazy"
+                                decoding="async"
+                            />
                         </div>
                     )}
 
                     {type === 'video' && (
                         <div className="media-message">
-                            <video src={mediaUrl} controls className="message-video" />
+                            <video src={mediaUrl} controls className="message-video" preload="metadata" />
                         </div>
                     )}
 
@@ -100,6 +107,13 @@ const Message = ({ message, onDelete }) => {
             </div>
         </motion.div>
     );
-};
+}, (prevProps, nextProps) => {
+    // Custom comparison to avoid re-renders if only 'read' status changes for old messages deep in the list (optional, but good for performance)
+    // For now, strict equality on 'message' object ID and content fields is safer.
+    // If message object is mutated in parent, this might fail, but Firestore returns new objects.
+    return prevProps.message.id === nextProps.message.id &&
+        prevProps.message.read === nextProps.message.read &&
+        prevProps.message.text === nextProps.message.text;
+});
 
 export default Message;

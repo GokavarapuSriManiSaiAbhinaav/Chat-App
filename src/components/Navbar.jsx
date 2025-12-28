@@ -47,7 +47,7 @@ const Navbar = ({ onToggleMenu, onToggleTheme, onToggleGroupModal, onLogoClick, 
                     onClick={onLogoClick}
                     style={{ cursor: 'pointer' }}
                 >
-                    YOU & ME
+                    U & ME
                 </motion.div>
             </div>
 

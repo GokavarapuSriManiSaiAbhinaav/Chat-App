@@ -127,7 +127,7 @@ const Login = () => {
             {/* Login Form */}
             <div className="login-form-container">
                 <div className="login-card">
-                    <h1>YOU & ME</h1>
+                    <h1>U & ME</h1>
 
                     <p>Connect instantly. Chat privately.</p>
                     {error && <div className="error-message">{error}</div>}

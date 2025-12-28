@@ -621,13 +621,15 @@ body.dark-mode .chat-bg-mesh {
 }
 
 @media (max-width: 768px) {
-    .navbar {
-        display: none;
-    }
+    /* .navbar {
+        display: none; 
+       We want Navbar visible for Logout options
+    } */
 
     .chat-room {
-        height: 100vh;
-        height: 100dvh;
+        height: calc(100vh - 60px);
+        /* Account for Navbar height */
+        height: calc(100dvh - 60px);
         overflow: hidden;
     }
 
@@ -701,5 +703,32 @@ body.dark-mode .chat-bg-mesh {
         bottom: 0px;
         /* Dock to bottom on very small screens */
         height: 300px;
+    }
+
+    /* Mobile Performance Optimizations */
+    .chat-bg-mesh,
+    .chat-bg-ambient,
+    .orb,
+    .star {
+        display: none !important;
+        /* Disable heavy background animations */
+    }
+
+    .chat-header,
+    .chat-form {
+        backdrop-filter: none !important;
+        /* Remove expensive blur */
+        -webkit-backdrop-filter: none !important;
+        background: var(--bg-app);
+        /* Fallback solid color */
+    }
+
+    .chat-form:focus-within {
+        box-shadow: none !important;
+    }
+
+    .message-bubble {
+        box-shadow: none !important;
+        /* Remove message shadows */
     }
 }

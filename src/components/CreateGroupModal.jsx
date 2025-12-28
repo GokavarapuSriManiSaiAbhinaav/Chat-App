@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db, storage } from '../firebase';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { db } from '../firebase';
+import { uploadToCloudinary } from '../utils/cloudinary';
 import { useAuth } from '../context/AuthContext';
 import { IoClose, IoPeople, IoCamera } from 'react-icons/io5';
 import './CreateGroupModal.css';
@@ -91,9 +91,7 @@ const CreateGroupModal = ({ isOpen, onClose }) => {
             let photoURL = "https://cdn-icons-png.flaticon.com/512/612/612051.png";
 
             if (avatarFile) {
-                const storageRef = ref(storage, `group_avatars/${Date.now()}_${groupName}`);
-                const uploadTask = await uploadBytesResumable(storageRef, avatarFile);
-                photoURL = await getDownloadURL(uploadTask.ref);
+                photoURL = await uploadToCloudinary(avatarFile, 'image');
             }
 
             const groupData = {
