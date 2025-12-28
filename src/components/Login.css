@@ -1,0 +1,336 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
+
+/* --- Reset & Base --- */
+.login-room {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    /* Deep dark background by default */
+    background: radial-gradient(circle at 50% 30%, #2b2b2b 0%, #1a1a1a 40%, #000000 100%);
+    transition: all 1.2s ease-in-out;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    animation: loginFadeIn 1s ease-out forwards;
+}
+
+@keyframes loginFadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* State: Light ON - Warm, inviting, yet moody */
+.login-room.light-on {
+    background: radial-gradient(circle at 50% 30%, #e8dcb9 0%, #b8a688 30%, #5e4f3b 100%);
+}
+
+.login-room.light-off {
+    background: radial-gradient(circle at 50% 30%, #222 0%, #111 50%, #050505 100%);
+}
+
+/* --- Lamp & Wire Container --- */
+.lamp-container {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.wire {
+    width: 4px;
+    background: linear-gradient(90deg, #555, #222, #555);
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.5);
+    transform-origin: top center;
+    will-change: height, transform;
+}
+
+.lamp-shade {
+    position: relative;
+    width: 140px;
+    height: 90px;
+    /* Metallic / Fabric look */
+    background: linear-gradient(135deg, #333 0%, #1a1a1a 100%);
+    border-radius: 70px 70px 10px 10px;
+    z-index: 21;
+    box-shadow:
+        inset 0 -5px 10px rgba(0, 0, 0, 0.8),
+        /* Inner depth */
+        0 10px 30px rgba(0, 0, 0, 0.8);
+    /* Cast shadow */
+}
+
+/* Refinement when light is ON */
+.light-on .lamp-shade {
+    background: linear-gradient(135deg, #444 0%, #2a2a2a 100%);
+}
+
+/* --- Volumetric Light Beam (New) --- */
+.light-beam {
+    position: absolute;
+    top: 80px;
+    /* Right under the shade */
+    left: 50%;
+    transform: translateX(-50%) perspective(600px) rotateX(20deg);
+    width: 200px;
+    height: 0;
+    background: linear-gradient(to bottom, rgba(255, 255, 230, 0.4) 0%, rgba(255, 255, 230, 0) 100%);
+    clip-path: polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%);
+    /* Conic shape */
+    transition: height 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.6s ease;
+    opacity: 0;
+    pointer-events: none;
+    filter: blur(15px);
+    z-index: 5;
+}
+
+.light-beam.on {
+    height: 80vh;
+    opacity: 1;
+}
+
+/* --- Ambient Glow (Room Fill) --- */
+.ambient-glow {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 40%, rgba(255, 200, 100, 0.15), transparent 70%);
+    opacity: 0;
+    transition: opacity 1s ease;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.ambient-glow.on {
+    opacity: 1;
+}
+
+
+/* --- Pull Cord --- */
+.pull-cord {
+    position: absolute;
+    top: 60px;
+    /* Inside shade */
+    left: 50%;
+    width: 2px;
+    background: repeating-linear-gradient(45deg,
+            #666,
+            #666 2px,
+            #444 2px,
+            #444 4px);
+    /* Braided texture texture */
+    transform: translateX(-50%);
+    cursor: grab;
+    z-index: 22;
+    touch-action: none;
+}
+
+.pull-handle {
+    position: absolute;
+    bottom: -15px;
+    /* Hang slightly below rope end */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 30px;
+    background: radial-gradient(circle at 30% 30%, #ff6b6b, #c0392b);
+    border-radius: 10px 10px 15px 15px;
+    cursor: grab;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+}
+
+.pull-cord:active,
+.pull-handle:active {
+    cursor: grabbing;
+}
+
+
+/* --- Login Form --- */
+.login-form-container {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+    transition: opacity 0.8s ease 0.2s, transform 0.8s cubic-bezier(0.19, 1, 0.22, 1) 0.2s;
+    z-index: 15;
+    pointer-events: none;
+}
+
+.light-on .login-form-container {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: all;
+}
+
+/* Glassmorphism Card */
+.login-card {
+    background: rgba(40, 40, 40, 0.4);
+    /* Dark glass by default context */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 3.5rem;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    text-align: center;
+    max-width: 420px;
+    width: 100%;
+    color: #fff;
+}
+
+.light-on .login-card {
+    /* Lighter glass when on */
+    background: rgba(255, 255, 255, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+    color: #333;
+    /* Dark text on light background */
+}
+
+.login-card h1 {
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+    font-size: 2.8rem;
+    letter-spacing: -1px;
+    color: inherit;
+}
+
+.login-card p {
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 2.5rem;
+    font-size: 1.1rem;
+    font-weight: 300;
+}
+
+.light-on .login-card p {
+    color: rgba(0, 0, 0, 0.6);
+}
+
+.google-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    padding: 16px;
+    border: none;
+    background: #111;
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: 500;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.light-on .google-btn {
+    background: #000;
+}
+
+.google-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.google-btn:active {
+    transform: translateY(0);
+}
+
+.google-btn.loading {
+    background: #222;
+    cursor: not-allowed;
+    opacity: 0.8;
+}
+
+.login-loader {
+    width: 24px;
+    height: 24px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.google-icon {
+    font-size: 1.6rem;
+    background: #fff;
+    border-radius: 50%;
+    padding: 2px;
+}
+
+.error-message {
+    background: rgba(255, 0, 0, 0.1);
+    color: #ff6b6b;
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    border: 1px solid rgba(255, 0, 0, 0.2);
+}
+
+/* Floor Spotlight (Optional - Keeping subtle) */
+.floor-spotlight {
+    display: none;
+    /* Replaced by volumetric light-beam and better gradients */
+}
+
+/* Instructions to Pull - Elegant Fade */
+.pull-instruction {
+    margin-top: 180px;
+    /* Position it below the lamp and handle */
+    text-align: center;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 0.9rem;
+    pointer-events: none;
+    opacity: 1;
+    transition: opacity 0.5s;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    font-weight: 300;
+    animation: pulse 3s infinite;
+    z-index: 10;
+}
+
+.light-on .pull-instruction {
+    opacity: 0;
+    animation: none;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 0.2;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .login-card {
+        padding: 2rem;
+        width: 90%;
+    }
+
+    .lamp-shade {
+        width: 120px;
+        height: 80px;
+    }
+}

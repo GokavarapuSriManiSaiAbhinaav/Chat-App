@@ -1,0 +1,104 @@
+.setup-container {
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    color: white;
+}
+
+.setup-card {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    padding: 30px;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 600px;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    text-align: center;
+}
+
+/* ... existing styles ... */
+
+.hint-text {
+    font-size: 0.85rem;
+    color: #bbb;
+    margin-bottom: 15px;
+    text-align: left;
+}
+
+.avatar-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+.avatar-card {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.avatar-card:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-3px);
+}
+
+.avatar-card.selected {
+    border-color: #E100FF;
+    background: rgba(225, 0, 255, 0.1);
+    box-shadow: 0 0 15px rgba(225, 0, 255, 0.3);
+}
+
+.avatar-card img {
+    width: 50px;
+    height: 50px;
+    margin-bottom: 5px;
+    border-radius: 8px;
+    /* Slightly rounded styling for the svg */
+}
+
+.style-name {
+    font-size: 0.7rem;
+    color: #ccc;
+    text-transform: capitalize;
+}
+
+.primary-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #7F00FF, #E100FF);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.primary-btn:hover {
+    transform: translateY(-2px);
+}
+
+.primary-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.error-message {
+    background: rgba(255, 59, 48, 0.1);
+    color: #ff3b30;
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}

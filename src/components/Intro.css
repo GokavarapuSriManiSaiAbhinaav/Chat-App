@@ -1,0 +1,292 @@
+.intro-container {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    transition: opacity 0.8s ease-in-out;
+}
+
+.intro-container.fade-out {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Cinematic Overlays */
+.vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle, transparent 50%, rgba(0, 0, 0, 0.8) 100%);
+    pointer-events: none;
+    z-index: 2;
+    animation: vignettePulse 8s infinite alternate;
+}
+
+.film-grain {
+    position: absolute;
+    inset: 0;
+    background-image: url("https://www.transparenttextures.com/patterns/stardust.png");
+    opacity: 0.1;
+    pointer-events: none;
+    z-index: 3;
+    animation: grainMove 1s steps(5) infinite;
+}
+
+@keyframes vignettePulse {
+    from {
+        opacity: 0.5;
+    }
+
+    to {
+        opacity: 0.8;
+    }
+}
+
+@keyframes grainMove {
+
+    0%,
+    100% {
+        transform: translate(0, 0);
+    }
+
+    25% {
+        transform: translate(-1%, -1%);
+    }
+
+    50% {
+        transform: translate(1%, 1%);
+    }
+
+    75% {
+        transform: translate(-1%, 1%);
+    }
+}
+
+.intro-content {
+    position: relative;
+    text-align: center;
+}
+
+.intro-title {
+    color: #fff;
+    font-size: clamp(3rem, 10vw, 5rem);
+    font-weight: 800;
+    margin: 0;
+    opacity: 0;
+    transform: scale(0.9);
+    animation:
+        cinematicAppear 1.5s cubic-bezier(0.2, 0, 0.2, 1) forwards,
+        letterExpand 3.5s ease-out forwards,
+        cinematicFloat 4s ease-in-out infinite alternate;
+}
+
+/* Background Particles */
+.particles-bg {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+}
+
+.particle {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: #fff;
+    border-radius: 50%;
+    opacity: 0;
+    animation: particleFloat 6s infinite linear;
+}
+
+/* Stagger particle positions and speeds */
+.particle:nth-child(1) {
+    left: 10%;
+    top: 20%;
+    animation-delay: 0s;
+}
+
+.particle:nth-child(2) {
+    left: 30%;
+    top: 80%;
+    animation-delay: 1s;
+}
+
+.particle:nth-child(3) {
+    left: 50%;
+    top: 40%;
+    animation-delay: 2.5s;
+}
+
+.particle:nth-child(4) {
+    left: 70%;
+    top: 10%;
+    animation-delay: 0.5s;
+}
+
+.particle:nth-child(5) {
+    left: 90%;
+    top: 60%;
+    animation-delay: 3s;
+}
+
+.particle:nth-child(6) {
+    left: 15%;
+    top: 50%;
+    animation-delay: 1.5s;
+}
+
+.particle:nth-child(7) {
+    left: 45%;
+    top: 25%;
+    animation-delay: 2s;
+}
+
+.particle:nth-child(8) {
+    left: 80%;
+    top: 75%;
+    animation-delay: 4s;
+}
+
+.particle:nth-child(9) {
+    left: 25%;
+    top: 15%;
+    animation-delay: 5s;
+}
+
+.particle:nth-child(10) {
+    left: 65%;
+    top: 85%;
+    animation-delay: 0.2s;
+}
+
+/* ... (Add more if needed, but 10-20 is good for subtle) */
+.particle:nth-child(n+11) {
+    display: none;
+}
+
+/* Fallback for array size if needed */
+
+@keyframes particleFloat {
+    0% {
+        transform: translateY(0);
+        opacity: 0;
+    }
+
+    20% {
+        opacity: 0.4;
+    }
+
+    80% {
+        opacity: 0.4;
+    }
+
+    100% {
+        transform: translateY(-100px);
+        opacity: 0;
+    }
+}
+
+@keyframes letterExpand {
+    from {
+        letter-spacing: 0.4rem;
+    }
+
+    to {
+        letter-spacing: 1rem;
+    }
+}
+
+.intro-subtitle {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3rem;
+    margin-top: 1rem;
+    opacity: 0;
+    animation: cinematicAppear 1.5s cubic-bezier(0.2, 0, 0.2, 1) 0.5s forwards;
+}
+
+.ampersand {
+    color: #444;
+    font-weight: 300;
+    margin: 0 0.5rem;
+}
+
+/* Light Sweep Effect */
+.intro-title::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg,
+            transparent 0%,
+            transparent 40%,
+            rgba(255, 255, 255, 0.8) 50%,
+            transparent 60%,
+            transparent 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: sweep 2.5s ease-in-out 0.5s infinite;
+}
+
+/* Supporting line for sweep feel */
+.sweep-line {
+    position: absolute;
+    bottom: -10px;
+    left: 10%;
+    width: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #fff, transparent);
+    animation: lineExtend 1.5s ease-out 0.5s forwards;
+    opacity: 0.3;
+}
+
+@keyframes cinematicAppear {
+    0% {
+        opacity: 0;
+        transform: scale(0.8);
+        filter: blur(10px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1);
+        filter: blur(0);
+    }
+}
+
+@keyframes cinematicFloat {
+    from {
+        transform: translateY(0) scale(1.0);
+    }
+
+    to {
+        transform: translateY(-5px) scale(1.02);
+    }
+}
+
+@keyframes sweep {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+@keyframes lineExtend {
+    from {
+        width: 0;
+        left: 50%;
+        opacity: 0;
+    }
+
+    to {
+        width: 80%;
+        left: 10%;
+        opacity: 0.3;
+    }
+}

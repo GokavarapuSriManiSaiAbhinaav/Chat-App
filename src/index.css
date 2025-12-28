@@ -1,0 +1,141 @@
+:root {
+    /* --- LIGHT THEME (Default) --- */
+    --bg-app: #f8fafc;
+    --bg-chat: #ffffff;
+    --sidebar-bg: rgba(255, 255, 255, 0.7);
+    --navbar-bg: rgba(255, 255, 255, 0.8);
+    --border-color: rgba(0, 0, 0, 0.08);
+
+    /* Glassmorphism Light */
+    --glass-bg: rgba(255, 255, 255, 0.6);
+    --glass-border: rgba(0, 0, 0, 0.05);
+    --glass-input: rgba(0, 0, 0, 0.03);
+    --glass-header: rgba(255, 255, 255, 0.8);
+
+    --primary-color: #0084ff;
+    --accent-gradient: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%);
+    --primary-gradient: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%);
+
+    --text-main: #1a1a1b;
+    --text-secondary: #64748b;
+    --text-inverse: #ffffff;
+
+    --msg-sent: #0084ff;
+    --msg-sent-text: #ffffff;
+    --msg-received: rgba(0, 0, 0, 0.05);
+    --msg-received-text: #1a1a1b;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 15px rgba(0, 0, 0, 0.08);
+}
+
+body.dark-mode {
+    /* --- DARK THEME (True Pure Black OLED) --- */
+    --bg-app: #000000;
+    --bg-chat: #000000;
+    --sidebar-bg: rgba(0, 0, 0, 0.8);
+    --navbar-bg: rgba(0, 0, 0, 0.9);
+    --border-color: rgba(255, 255, 255, 0.08);
+
+    /* Glassmorphism Dark - Refined for OLED */
+    --glass-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.06);
+    --glass-input: rgba(255, 255, 255, 0.05);
+    --glass-header: rgba(0, 0, 0, 0.95);
+
+    --primary-color: #8b5cf6;
+    /* Slightly deeper purple */
+    --accent-gradient: linear-gradient(135deg, #7c3aed 0%, #4c1d95 100%);
+    --primary-gradient: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+
+    --text-main: #ffffff;
+    --text-secondary: #94a3b8;
+    --text-inverse: #000000;
+
+    --msg-sent: #7c3aed;
+    --msg-sent-text: #ffffff;
+    --msg-received: rgba(255, 255, 255, 0.07);
+    --msg-received-text: #f8fafc;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+/* Global Reset & Body */
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg-app);
+    color: var(--text-main);
+    min-height: 100vh;
+    overflow: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* No background animation - Clean and simple */
+
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(108, 99, 255, 0.3);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(108, 99, 255, 0.6);
+}
+
+.app-container {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background-color: var(--bg-app);
+}
+
+.App {
+    width: 95%;
+    /* Mobile first width */
+    max-width: 1100px;
+    height: 90vh;
+    background: var(--glass-bg);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 20px;
+    border: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    animation: app-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes app-enter {
+    0% {
+        transform: scale(0.95);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@media (max-width: 768px) {
+    .App {
+        width: 100%;
+        height: 100vh;
+        border-radius: 0;
+    }
+}
