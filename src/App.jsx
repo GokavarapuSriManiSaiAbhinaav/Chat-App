@@ -10,6 +10,7 @@ import Intro from './components/Intro';
 import Loader from './components/Loader';
 import NotificationManager from './components/NotificationManager';
 import CreateGroupModal from './components/CreateGroupModal';
+import Maintenance from './components/Maintenance';
 import { useAuth } from './context/AuthContext';
 import './index.css';
 
@@ -24,6 +25,14 @@ const App = () => {
   const [showWelcome, setShowWelcome] = useState(false);
   const [showIntro, setShowIntro] = useState(!sessionStorage.getItem('introShown'));
   const [selectedUser, setSelectedUser] = useState(null);
+
+  /* Maintenance Mode Logic */
+  const isMaintenanceMode = import.meta.env.VITE_MAINTENANCE_MODE === 'true';
+  const adminEmail = import.meta.env.VITE_ADMIN_EMAIL;
+  // Admin bypass: Maintenance is ON but user is Admin
+  const isBypassed = currentUser?.email && currentUser?.email === adminEmail;
+  const shouldShowMaintenance = isMaintenanceMode && !isBypassed;
+
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
@@ -44,6 +53,8 @@ const App = () => {
   };
 
   useEffect(() => {
+    if (shouldShowMaintenance) return;
+
     const checkProfile = async () => {
       if (currentUser) {
         setCheckingProfile(true);
@@ -98,7 +109,11 @@ const App = () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       handleStatusChange(false);
     };
-  }, [currentUser, isProfileSetup]);
+  }, [currentUser, isProfileSetup, shouldShowMaintenance]);
+
+  if (shouldShowMaintenance) {
+    return <Maintenance />;
+  }
 
   if (showIntro) {
     return <Intro onFinish={handleIntroFinish} />;

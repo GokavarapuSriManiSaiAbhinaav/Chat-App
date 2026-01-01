@@ -1,0 +1,54 @@
+PROJECT IMPLEMENTATION OVERVIEW
+
+1. Core Framework & Build Tool
+--------------------------------------
+- React (v19): The main library used to build the user interface (UI).
+- Vite: The build tool and development server used to run and bundle the app.
+
+2. UI & User Experience Features
+--------------------------------------
+- Intro Sequence: 
+  * A custom "Intro" component that plays a cinematic animation when the app first loads.
+  * Displays the branding before seamlessly transitioning to the login screen.
+
+- Interactive Lamp Login:
+  * A unique, interactive login screen where the user must "pull" a virtual lamp cord to turn on the lights.
+  * This interaction reveals the Google Sign-In card, adding a playful and premium feel to the entry experience.
+  * Built using CSS animations and Framer Motion for the drag physics.
+
+- Emojis:
+  * using 'emoji-picker-react': A dedicated library that provides the extensive emoji keyboard used in the chat.
+  
+- Avatars:
+  * User avatars are primarily pulled from their Google Profiles upon sign-in.
+  * Fallback avatars utilize 'Flaticon' defaults (e.g., standard user icons) when a user doesn't have a profile picture.
+
+3. Backend Services (Firebase)
+--------------------------------------
+We use Google Firebase as our backend service:
+- Authentication: Handles secure user sign-in via Google.
+- Firestore Database: A real-time database that stores Users, Chats, and Messages.
+- Real-time Listeners: Updates the app instantly (live typing indicators, new message alerts).
+
+4. Media Storage
+--------------------------------------
+- Cloudinary: Used as the external cloud storage for heavy media files.
+  * Images and Voice Notes are uploaded here to keep the database fast.
+
+5. Styling & Visuals
+--------------------------------------
+- CSS (Vanilla): Custom styling for the "Glassmorphism" effect, dark mode, and responsive layouts.
+- Framer Motion: Powers the smooth animations throughout the app (Lamp pull, page transitions, chat bubbles).
+- React Icons: Provides the vector icons (Send, Mic, Back arrow, etc.).
+
+6. Key Features
+--------------------------------------
+- Voice Messaging: Custom implementation using the browser's MediaRecorder API to record and send audio.
+- Mood Detection (AI): Analyzes message text to detect the mood (Happy, Serious, etc.) and changes UI hints accordingly.
+
+7. Project Structure
+--------------------------------------
+- src/components/: visual parts (ChatRoom, Login (Lamp), Intro, etc).
+- src/utils/: Helper functions (Cloudinary upload, Mood detector).
+- src/context/: Global authentication state.
+- firebase.js: Firebase configuration.
