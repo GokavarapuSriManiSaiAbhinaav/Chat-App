@@ -627,10 +627,12 @@ body.dark-mode .chat-bg-mesh {
     } */
 
     .chat-room {
-        height: calc(100vh - 60px);
-        /* Account for Navbar height */
-        height: calc(100dvh - 60px);
+        height: 100vh;
+        /* Fallback */
+        height: 100dvh;
         overflow: hidden;
+        display: flex;
+        flex-direction: column;
     }
 
     /* Hide chat box by default on mobile if no user selected */
@@ -640,12 +642,17 @@ body.dark-mode .chat-bg-mesh {
 
     .chat-room.is-chat-selected .chat-box {
         display: flex;
+        flex-direction: column;
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
         bottom: 0;
-        z-index: 200;
+        height: 100vh;
+        /* Fallback */
+        height: 100dvh;
+        z-index: 201;
+        /* Higher than Navbar */
         background: var(--bg-app);
     }
 
@@ -679,6 +686,11 @@ body.dark-mode .chat-bg-mesh {
         background: var(--bg-app);
         /* Solid bg to hide blurred messages behind it */
         border-top: 1px solid var(--border-color);
+        position: sticky;
+        bottom: 0;
+        z-index: 10;
+        padding-bottom: env(safe-area-inset-bottom, 10px);
+        /* iOS safe area */
     }
 
     .chat-form {
@@ -725,6 +737,10 @@ body.dark-mode .chat-bg-mesh {
 
     .chat-form:focus-within {
         box-shadow: none !important;
+    }
+
+    .message-delete-btn.desktop-only {
+        display: none !important;
     }
 
     .message-bubble {

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { IoSearch, IoTrashBinOutline } from 'react-icons/io5';
+import { IoSearch, IoExitOutline, IoTrashBinOutline, IoChatbubbleEllipsesOutline } from "react-icons/io5";
 import { collection, query, where, onSnapshot, getDocs, getDoc, doc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
@@ -10,9 +10,10 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
     const [searchTerm, setSearchTerm] = useState("");
     const [searchResults, setSearchResults] = useState([]);
     const [searching, setSearching] = useState(false);
-    const [activeChats, setActiveChats] = useState([]);
-    const [loadingChats, setLoadingChats] = useState(true);
-    const { currentUser } = useAuth();
+    const [recentChats, setRecentChats] = useState([]);
+    const [loadingRecent, setLoadingRecent] = useState(true);
+    const searchTimeoutRef = useRef(null);
+    const { currentUser, logout } = useAuth();
 
     // 1. Listen for Active Conversations
     useEffect(() => {
@@ -89,8 +90,8 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
                     return timeB - timeA;
                 });
 
-            setActiveChats(sortedChats);
-            setLoadingChats(false);
+            setRecentChats(sortedChats);
+            setLoadingRecent(false);
         });
 
         return () => unsubscribe();
@@ -155,6 +156,15 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
         if (onClose) onClose();
     };
 
+    const handleLogout = async () => {
+        try {
+            await logout();
+        } catch (error) {
+            console.error("Failed to log out:", error);
+            alert("Failed to log out.");
+        }
+    };
+
     return (
         <motion.div
             initial={false}
@@ -165,41 +175,50 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
             className={`user-list ${isOpen ? 'active' : ''} ${isChatActive ? 'is-chat-active' : ''}`}
         >
-            {/* Sidebar Ambient Layer */}
-            <div className="sidebar-ambient">
-                <div className="sidebar-pulse"></div>
-            </div>
-
             <div className="sidebar-header">
-                <h3>Chats</h3>
-                <button
-                    className="clear-convos-btn"
-                    onClick={handleClearConversations}
-                    title="Clear all 1-to-1 conversations"
-                >
-                    <IoTrashBinOutline />
-                    <span>Clear</span>
-                </button>
+                <div className="user-profile">
+                    <img src={currentUser?.photoURL || "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"} alt="Profile" className="profile-img" />
+                </div>
+                <div className="sidebar-actions">
+                    <button onClick={handleLogout} className="logout-btn" title="Logout">
+                        <IoExitOutline />
+                    </button>
+                </div>
             </div>
 
-            <form onSubmit={handleSearch} className="search-form">
-                <div className="search-box">
+
+
+            <div className="search-bar-container">
+                <form onSubmit={handleSearch} className="search-form" style={{ display: 'flex', width: '100%', alignItems: 'center', background: 'var(--glass-input)', borderRadius: '12px', padding: '0 10px' }}>
                     <input
                         type="text"
                         placeholder="Search username..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value.toLowerCase().replace(/\s/g, ''))}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--text-main)', flex: 1, padding: '12px 5px', outline: 'none' }}
                     />
-                    <button type="submit">
+                    <button type="submit" style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem' }}>
                         <IoSearch />
                     </button>
-                </div>
-            </form>
+                </form>
+            </div>
+
+            <div className="chats-header" style={{ padding: '0 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', marginBottom: '5px' }}>
+                <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px' }}>Chats</h4>
+                <button
+                    className="clear-convos-btn"
+                    onClick={handleClearConversations}
+                    title="Clear all 1-to-1 conversations"
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', opacity: 0.6 }}
+                >
+                    <IoTrashBinOutline />
+                </button>
+            </div>
 
             <ul className="chats-list">
                 {searchTerm ? (
                     <>
-                        {searchResults.length > 0 && <li className="list-header">Search Results</li>}
+                        {searchResults.length > 0 && <li className="list-header" style={{ padding: '10px 20px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Search Results</li>}
 
                         {searchResults.map((user) => (
                             <li
@@ -220,13 +239,12 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
                     </>
                 ) : (
                     <>
-                        <li className="list-header">Conversations</li>
-                        {activeChats.length === 0 && !loadingChats && (
+                        {recentChats.length === 0 && !loadingRecent && (
                             <li className="list-status">No conversations yet. Search to start one!</li>
                         )}
                         <div className="chats-scroll-area">
                             <AnimatePresence>
-                                {activeChats.map((chat, i) => (
+                                {recentChats.map((chat, i) => (
                                     <motion.li
                                         key={chat.id}
                                         initial={{ opacity: 0, x: -10 }}
@@ -245,12 +263,21 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
                                                 </span>
                                             </div>
                                             <div className="user-info-bottom">
-                                                <span className={`last-message ${chat.unreadCount > 0 ? 'unread' : ''}`}>
-                                                    {chat.unreadCount > 0 ? "New message" : (chat.lastMessage || (chat.isGroup ? "Group Chat" : "Private Chat"))}
+                                                <span className="last-message">
+                                                    {/* Hide preview if clear chat was used (locally assuming unreadCount is reliable indicator or just empty) */}
+                                                    {chat.unreadCount > 0 ? "New message" : (
+                                                        <span className={chat.unreadCount > 0 ? 'unread' : ''}>
+                                                            {/* Just simplify to check unread */}
+                                                            {/* Logic for hiding preview: if unreadCount == 0, show empty? Or show last message text? */}
+                                                            {/* User expectation from Phase 2: "UserSearch.jsx to hide the recent chat preview if there are no unread messages" */}
+                                                            {/* So if unreadCount > 0 show "New message", else "" */}
+                                                            {chat.unreadCount > 0 ? "New message" : ""}
+                                                        </span>
+                                                    )}
                                                 </span>
                                             </div>
                                         </div>
-                                        {chat.unreadCount > 0 && (
+                                        {chat.unreadCount > 0 && selectedUser?.chatId !== chat.chatId && (
                                             <div className="unread-badge">{chat.unreadCount}</div>
                                         )}
                                     </motion.li>
@@ -260,7 +287,7 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
                     </>
                 )}
             </ul>
-        </motion.div >
+        </motion.div>
     );
 };
 

@@ -3,13 +3,15 @@ import { useAuth } from '../context/AuthContext';
 import "./Navbar.css";
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaSun, FaMoon, FaSignOutAlt, FaTrashAlt } from 'react-icons/fa';
-import { MdGroupAdd } from 'react-icons/md';
+import { MdGroupAdd, MdSettings } from 'react-icons/md';
 import { db } from '../firebase';
+import SettingsModal from "./SettingsModal";
 import { doc, deleteDoc } from 'firebase/firestore';
 
 const Navbar = ({ onToggleMenu, onToggleTheme, onToggleGroupModal, onLogoClick, isDarkMode, user }) => {
     const { currentUser, logout, deleteAccount } = useAuth();
     const [showProfileMenu, setShowProfileMenu] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -75,6 +77,9 @@ const Navbar = ({ onToggleMenu, onToggleTheme, onToggleGroupModal, onLogoClick, 
                                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
                                         className="profile-dropdown"
                                     >
+                                        <button className="dropdown-item" onClick={() => { setShowProfileMenu(false); setIsSettingsOpen(true); }}>
+                                            <MdSettings /> Settings
+                                        </button>
                                         <button className="dropdown-item" onClick={() => logout()}>
                                             <FaSignOutAlt /> Log out
                                         </button>
@@ -88,6 +93,7 @@ const Navbar = ({ onToggleMenu, onToggleTheme, onToggleGroupModal, onLogoClick, 
                     </>
                 )}
             </div>
+            <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onToggleTheme={onToggleTheme} isDarkMode={isDarkMode} />
         </div>
     );
 };

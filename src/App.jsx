@@ -16,13 +16,25 @@ import './index.css';
 
 const App = () => {
   const { currentUser } = useAuth();
+  /* Optimistic Initialization from Cache */
+  const cachedProfile = JSON.parse(localStorage.getItem('user_profile_cache') || 'null');
+  const cachedSetup = localStorage.getItem('is_profile_setup') === 'true';
+
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isProfileSetup, setIsProfileSetup] = useState(false);
-  const [userProfile, setUserProfile] = useState(null);
+
+  // Start with cached values if available -> Instant Load!
+  const [isProfileSetup, setIsProfileSetup] = useState(!!currentUser && cachedSetup);
+  const [userProfile, setUserProfile] = useState(currentUser ? cachedProfile : null);
+  const [checkingProfile, setCheckingProfile] = useState(!cachedProfile || !cachedSetup);
+
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
-  const [checkingProfile, setCheckingProfile] = useState(true);
-  const [showWelcome, setShowWelcome] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false); // Disable welcome on simple refresh to speed up? Users usually hate it every time.
+  // Actually, user didn't ask to remove welcome, but "loading...".
+  // Let's keep welcome logic separate but maybe skip it if we have cache? 
+  // User said "taking time to open main page". Welcome screen ADDS time.
+  // I will only show Welcome if !cachedSetup (first time this session/device).
+
   const [showIntro, setShowIntro] = useState(!sessionStorage.getItem('introShown'));
   const [selectedUser, setSelectedUser] = useState(null);
 
@@ -64,19 +76,26 @@ const App = () => {
           const data = docSnap.data();
           setUserProfile(data);
           setIsProfileSetup(true);
-          setShowWelcome(true);
-          setTimeout(() => {
-            setShowWelcome(false);
-          }, 2500);
 
-          // Mark user as online
-          await updateDoc(docRef, {
+          // Update Cache
+          localStorage.setItem('user_profile_cache', JSON.stringify(data));
+          localStorage.setItem('is_profile_setup', 'true');
+
+          if (!cachedProfile) {
+            setShowWelcome(true);
+            setTimeout(() => setShowWelcome(false), 2000); // reduced from 2500
+          }
+
+          // Mark user as online (Background)
+          updateDoc(docRef, {
             isOnline: true,
             lastSeen: serverTimestamp()
-          });
+          }).catch(e => console.error("Online status update failed", e));
         } else {
           setIsProfileSetup(false);
           setUserProfile(null);
+          localStorage.removeItem('user_profile_cache');
+          localStorage.removeItem('is_profile_setup');
         }
         setCheckingProfile(false);
       } else {

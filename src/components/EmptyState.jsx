@@ -81,26 +81,7 @@ const EmptyState = ({ onSearch }) => {
 
             </motion.div>
 
-            <div className="bottom-hints">
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.4 }}
-                    transition={{ delay: 1.5 }}
-                    className="hint-item"
-                >
-                    <IoRocketOutline />
-                    <span>Real-time Messaging</span>
-                </motion.div>
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.4 }}
-                    transition={{ delay: 1.7 }}
-                    className="hint-item"
-                >
-                    <IoSparklesOutline />
-                    <span>AI Mood Detection</span>
-                </motion.div>
-            </div>
+
         </div>
     );
 };
