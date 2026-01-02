@@ -181,6 +181,8 @@ const ChatRoom = (props) => {
                 const isFromPartner = latestMsg.uid !== auth.currentUser.uid;
 
                 if (isNew && isFromPartner) {
+                    // Sound removed as per user request
+                    /*
                     if (userSettings?.notifications?.sound !== false) {
                         const audio = notificationAudioRef.current;
                         if (audio) {
@@ -188,6 +190,7 @@ const ChatRoom = (props) => {
                             audio.play().catch(e => console.log("Audio play failed", e));
                         }
                     }
+                    */
                     if (userSettings?.notifications?.vibration !== false && navigator.vibrate) {
                         navigator.vibrate(200);
                     }
@@ -702,7 +705,8 @@ const ChatRoom = (props) => {
     const isTypingLocalRef = useRef(false);
 
     const handleInputChange = (e) => {
-        setFormValue(e.target.value);
+        const val = e.target.value;
+        setFormValue(val);
 
         // Typing Privacy Check
         if (userSettings?.privacy?.typing === false) return;

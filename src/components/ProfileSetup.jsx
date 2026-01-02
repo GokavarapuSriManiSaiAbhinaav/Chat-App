@@ -5,12 +5,20 @@ import { useAuth } from "../context/AuthContext";
 import "./ProfileSetup.css";
 
 // Specific Adventurer avatars as requested
+// Diverse Adventurer avatars
 const AVATAR_OPTIONS = [
-    "https://api.dicebear.com/9.x/adventurer/svg?seed=Emery",
-    "https://api.dicebear.com/9.x/adventurer/svg?seed=Aidan",
-    "https://api.dicebear.com/9.x/adventurer/svg?seed=Brian",
-    "https://api.dicebear.com/9.x/adventurer/svg?seed=Brooklynn",
-    "https://api.dicebear.com/9.x/adventurer/svg?seed=Sophia" // Added a couple more for variety
+    "https://api.dicebear.com/9.x/adventurer/svg?seed=Felix",
+    "https://api.dicebear.com/9.x/adventurer/svg?seed=Aneka",
+    "https://api.dicebear.com/9.x/adventurer/svg?seed=Scooter",
+    "https://api.dicebear.com/9.x/adventurer/svg?seed=Liza",
+    "https://api.dicebear.com/9.x/adventurer/svg?seed=Alexander",
+    "https://api.dicebear.com/9.x/adventurer/svg?seed=Jessica",
+    "https://api.dicebear.com/9.x/adventurer/svg?seed=Destiny",
+    "https://api.dicebear.com/9.x/adventurer/svg?seed=Willow",
+    "https://api.dicebear.com/9.x/adventurer/svg?seed=Bailey",
+    "https://api.dicebear.com/9.x/adventurer/svg?seed=Midnight",
+    "https://api.dicebear.com/9.x/adventurer/svg?seed=Annie",
+    "https://api.dicebear.com/9.x/adventurer/svg?seed=Shadow"
 ];
 
 const ProfileSetup = ({ onComplete }) => {
