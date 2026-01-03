@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from "framer-motion";
 import Message from "./Message";
 import MoodHint from './MoodHint';
@@ -55,6 +56,7 @@ const ChatRoom = (props) => {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadError, setUploadError] = useState(null);
     const [recordingDuration, setRecordingDuration] = useState(0); // Timer state
+    const [pendingVoiceMessage, setPendingVoiceMessage] = useState(null);
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
     const shouldSendRef = useRef(true); // Ref to check if we should send or discard
@@ -215,8 +217,13 @@ const ChatRoom = (props) => {
 
         const timer = setTimeout(() => {
             const detectedValue = detectMood(messages);
-            setCurrentMood(detectedValue);
-        }, 600); // 600ms debounce for stability
+            // Only update if mood actually changed to prevent re-renders (optional but good)
+            setCurrentMood(prev => {
+                if (!detectedValue) return null;
+                if (prev && prev.id === detectedValue.id && prev.score === detectedValue.score) return prev;
+                return detectedValue;
+            });
+        }, 100);
 
         return () => clearTimeout(timer);
     }, [messages]);
@@ -553,13 +560,13 @@ const ChatRoom = (props) => {
         gap: '10px'
     };
 
-    const deleteMessage = async (messageId, isSender) => {
+    const deleteMessage = useCallback(async (messageId, isSender) => {
         // Redundant with new system but keeping for safety if called elsewhere
         if (!chatId || !messageId) return;
         setSelectedMessageForAction({ id: messageId, isSender, showDeleteConfirm: true });
-    };
+    }, [chatId]);
 
-    const handleReaction = async (message, emoji) => {
+    const handleReaction = useCallback(async (message, emoji) => {
         if (!chatId || !message) return;
         const messageRef = doc(db, "chats", chatId, "messages", message.id);
         const currentUser = auth.currentUser;
@@ -577,19 +584,18 @@ const ChatRoom = (props) => {
             console.error("Error reacting:", error);
         }
         setSelectedMessageForAction(null);
-    };
+    }, [chatId, auth.currentUser]);
 
-    const startEditing = (msg) => {
+    const startEditing = useCallback((msg) => {
         setEditingMessage(msg);
         setFormValue(msg.text);
         if (dummy.current) dummy.current.scrollIntoView({ behavior: "smooth" });
-        // Focus input (document.querySelector('.chat-input')?.focus() or use ref if available, but simple focus works usually via auto-focus or user click)
-    };
+    }, []);
 
-    const cancelEditing = () => {
+    const cancelEditing = useCallback(() => {
         setEditingMessage(null);
         setFormValue("");
-    };
+    }, []);
 
     const handleUpdateMessage = async () => {
         if (!editingMessage || !formValue.trim()) return;
@@ -597,15 +603,25 @@ const ChatRoom = (props) => {
             const msgRef = doc(db, "chats", chatId, "messages", editingMessage.id);
             await updateDoc(msgRef, {
                 text: formValue,
-                edited: true,
-                editedAt: serverTimestamp()
+                isEdited: true
             });
-            cancelEditing();
-        } catch (e) {
-            console.error(e);
-            alert("Failed to update message");
+            setEditingMessage(null);
+            setFormValue("");
+        } catch (error) {
+            console.error("Error updating message:", error);
         }
     };
+
+    const handleOpenActionSheet = useCallback((msg) => {
+        setSelectedMessageForAction({ ...msg, isSender: msg.uid === auth.currentUser.uid });
+    }, [auth.currentUser.uid]);
+
+    const handleReply = useCallback((msg) => {
+        setReplyingTo(msg);
+        dummy.current?.scrollIntoView({ behavior: "smooth" });
+
+
+    }, []);
 
     const handleMessageAction = (action, message) => {
         if (!message) return;
@@ -748,6 +764,19 @@ const ChatRoom = (props) => {
     };
 
     const startRecording = async () => {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            setConfirmDialog({
+                isOpen: true,
+                title: "Not Supported",
+                message: "Voice recording is not supported in this browser or requires a secure (HTTPS) connection.",
+                isDanger: false,
+                showCancel: false,
+                confirmText: "OK",
+                onConfirm: () => { }
+            });
+            return;
+        }
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const mediaRecorder = new MediaRecorder(stream);
@@ -778,7 +807,15 @@ const ChatRoom = (props) => {
             shouldSendRef.current = true; // Default to send
         } catch (err) {
             console.error("Error accessing microphone:", err);
-            alert("Could not access microphone. Please allow permissions.");
+            setConfirmDialog({
+                isOpen: true,
+                title: "Microphone Access Denied",
+                message: "Could not access microphone. Please ensure specific permissions are granted in your browser settings.",
+                isDanger: false,
+                showCancel: false,
+                confirmText: "OK",
+                onConfirm: () => { }
+            });
         }
     };
 
@@ -802,40 +839,35 @@ const ChatRoom = (props) => {
         if (!chatId) return;
         const { uid, photoURL, displayName } = auth.currentUser;
 
+        // Optimistic UI: Create temporary Blob URL
+        const tempAudioUrl = URL.createObjectURL(audioBlob);
+        setPendingVoiceMessage({
+            id: `temp-${Date.now()}`,
+            text: "",
+            audioUrl: tempAudioUrl,
+            type: "audio",
+            createdAt: Timestamp.now(), // Use Firestore Timestamp for consistency
+            uid,
+            photoURL,
+            displayName,
+            read: false,
+            isPending: true
+        });
+
         setIsUploading(true);
         setUploadError(null);
+        setTimeout(() => dummy.current?.scrollIntoView({ behavior: "smooth" }), 10);
 
         try {
-            // 1. Prepare Storage Reference - REMOVED for Cloudinary
-            // const messageId = `${Date.now()}_${uid}`;
-            // const ext = audioBlob.type.includes('ogg') ? 'ogg' :
-            //     audioBlob.type.includes('mp4') ? 'mp4' : 'webm';
-
-            // const storageRef = ref(storage, `voiceMessages/${chatId}/${messageId}.${ext}`);
-
-
-            // 2. Upload using Cloudinary
-            // We removed uploadBytesResumable
-            // const metadata = {
-            //     contentType: audioBlob.type,
-            // };
-
-            // const uploadTask = uploadBytesResumable(storageRef, audioBlob, metadata);
-            // We do direct upload now
-
-
-
-
             // Start Cloudinary Upload
-            const audioUrl = await uploadToCloudinary(audioBlob, 'video'); // Cloudinary handles audio as video or raw usually, 'video' is safer for audio playback
+            const audioUrl = await uploadToCloudinary(audioBlob, 'video');
 
-
-            // 3. Add to Firestore
+            // Add to Firestore
             const collectionRef = collection(db, "chats", chatId, "messages");
             const chatDocRef = doc(db, "chats", chatId);
 
             const messageData = {
-                text: "", // Empty text for audio message
+                text: "",
                 audioUrl: audioUrl,
                 type: "audio",
                 createdAt: serverTimestamp(),
@@ -869,13 +901,17 @@ const ChatRoom = (props) => {
 
             await updateDoc(chatDocRef, updates);
 
-            dummy.current?.scrollIntoView({ behavior: "smooth" });
-
         } catch (error) {
             setUploadError(`Failed to send: ${error.message}`);
             alert(`Failed to send voice message: ${error.message}`);
         } finally {
             setIsUploading(false);
+            setPendingVoiceMessage(null); // Remove temp message (real one will be in snapshot)
+            // Revoke blob URL to free memory
+            // URL.revokeObjectURL(tempAudioUrl); // Actually better to keep it a bit until unmount or let garbage collector handle if component unmounts? 
+            // Revoking immediately might break playback if we switch to Real URL abruptly? 
+            // The browser handles ObjectURL lifecycle fairly well, but good practice to revoke.
+            // I'll skip revocation for now to avoid complexity with race conditions on playback.
         }
     };
 
@@ -925,7 +961,8 @@ const ChatRoom = (props) => {
             const updates = {
                 [`typing.${uid}`]: false,
                 lastInteraction: serverTimestamp(),
-                lastMessage: `${fileType === 'image' ? 'Image' : 'Video'} sent` // Sync lastMessage
+                lastMessage: `${fileType === 'image' ? 'Image' : 'Video'} sent`, // Sync lastMessage
+                hiddenFor: [] // Ensure chat is visible to all members
             };
 
             if (selectedUser.isGroup) {
@@ -960,23 +997,33 @@ const ChatRoom = (props) => {
             return;
         }
 
-        if (!formValue.trim() || !chatId) return;
+        const textToSend = formValue;
+        const replyContext = replyingTo;
+
+        if (!textToSend.trim() || !chatId) return;
+
+        // Optimistic UI: Clear Input Immediately
+        setFormValue("");
+        setShowEmojiPicker(false);
+        setReplyingTo(null);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        setTimeout(() => dummy.current?.scrollIntoView({ behavior: "smooth" }), 10);
 
         try {
             const collectionRef = collection(db, "chats", chatId, "messages");
             const chatDocRef = doc(db, "chats", chatId);
 
             const messageData = {
-                text: formValue,
+                text: textToSend,
                 createdAt: serverTimestamp(),
                 uid: auth.currentUser.uid,
                 photoURL: auth.currentUser.photoURL,
                 type: 'text',
-                replyTo: replyingTo ? {
-                    id: replyingTo.id,
-                    text: replyingTo.text || "Media",
-                    displayName: replyingTo.displayName || "User",
-                    type: replyingTo.type
+                replyTo: replyContext ? {
+                    id: replyContext.id,
+                    text: replyContext.text || "Media",
+                    displayName: replyContext.displayName || "User",
+                    type: replyContext.type
                 } : null,
                 ...(disappearingMode !== 'off' && {
                     expiresAt: Timestamp.fromDate(new Date(Date.now() + (disappearingMode === '24h' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000)))
@@ -989,7 +1036,8 @@ const ChatRoom = (props) => {
             const updates = {
                 [`typing.${uid}`]: false,
                 lastInteraction: serverTimestamp(),
-                lastMessage: formValue // Sync lastMessage
+                lastMessage: textToSend, // Sync lastMessage
+                hiddenFor: [] // Ensure chat is visible to all members (un-delete/un-clear)
             };
 
             if (selectedUser.isGroup) {
@@ -1005,12 +1053,9 @@ const ChatRoom = (props) => {
             }
 
             await updateDoc(chatDocRef, updates);
-            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
-            setFormValue("");
-            setShowEmojiPicker(false);
-            setReplyingTo(null);
-            dummy.current.scrollIntoView({ behavior: "smooth" });
+
+
         } catch (error) {
             // Error handling
         }
@@ -1018,10 +1063,7 @@ const ChatRoom = (props) => {
 
 
 
-    const handleReply = (msg) => {
-        setReplyingTo(msg);
-        dummy.current?.scrollIntoView({ behavior: "smooth" });
-    };
+
 
     const onEmojiClick = useCallback((emojiObject) => {
         setFormValue(prev => prev + emojiObject.emoji);
@@ -1254,10 +1296,18 @@ const ChatRoom = (props) => {
                                                 message={msg}
                                                 highlightText={messageSearchTerm} // Pass search term
                                                 // Pass handler that opens Action Sheet
-                                                onAction={() => setSelectedMessageForAction({ ...msg, isSender: msg.uid === auth.currentUser.uid })}
+                                                onAction={handleOpenActionSheet}
                                                 onReply={handleReply}
                                             />
                                         ))}
+                                        {pendingVoiceMessage && (
+                                            <Message
+                                                key={pendingVoiceMessage.id}
+                                                message={pendingVoiceMessage}
+                                                onAction={() => { }} // No actions on pending
+                                                onReply={() => { }} // No reply on pending
+                                            />
+                                        )}
                                     </AnimatePresence>
                                     {partnerTyping && (
                                         <div className="typing-indicator-wrapper">
@@ -1397,7 +1447,8 @@ const ChatRoom = (props) => {
                                                 }
                                             }
                                         }}
-                                        placeholder={`Message ${selectedUser.displayName}...`}
+                                        placeholder={selectedUser.isDeletedUser ? "Can't send message to deleted user" : `Message ${selectedUser.username ? '@' + selectedUser.username.replace(/^@/, '') : selectedUser.displayName}...`}
+                                        disabled={selectedUser.isDeletedUser}
                                     />
                                 )}
 
@@ -1411,13 +1462,21 @@ const ChatRoom = (props) => {
                                         className={`mic-btn ${isRecording ? 'recording' : ''} ${isUploading ? 'uploading' : ''}`}
                                         onClick={() => {
                                             if (userSettings?.mediaSettings?.allowVoice === false) {
-                                                alert("Voice messages are disabled in your Settings.");
+                                                setConfirmDialog({
+                                                    isOpen: true,
+                                                    title: "Voice Disabled",
+                                                    message: "Voice messages are disabled in your Settings.",
+                                                    isDanger: false,
+                                                    showCancel: false,
+                                                    confirmText: "OK",
+                                                    onConfirm: () => { }
+                                                });
                                                 return;
                                             }
                                             isRecording ? stopRecording() : startRecording();
                                         }}
-                                        disabled={isUploading || userSettings?.mediaSettings?.allowVoice === false}
-                                        style={{ opacity: userSettings?.mediaSettings?.allowVoice === false ? 0.5 : 1 }}
+                                        disabled={isUploading || selectedUser.isDeletedUser}
+                                        style={{ opacity: (userSettings?.mediaSettings?.allowVoice === false || selectedUser.isDeletedUser) ? 0.5 : 1 }}
                                     >
                                         {isUploading ? (
                                             <div className="mic-loader"></div>
@@ -1442,113 +1501,118 @@ const ChatRoom = (props) => {
                 )}
 
                 {/* Custom Confirm Dialog Overlay */}
-                {confirmDialog.isOpen && (
+                {/* Custom Confirmation Modal (Portal) */}
+                {confirmDialog.isOpen && createPortal(
                     <div style={{
                         position: 'fixed',
                         top: 0,
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                        backgroundColor: 'rgba(0, 0, 0, 0.75)', // Darker overlay
                         zIndex: 2200,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backdropFilter: 'blur(5px)'
+                        backdropFilter: 'blur(3px)'
                     }} onClick={(e) => { e.stopPropagation(); setConfirmDialog(prev => ({ ...prev, isOpen: false })); }}>
                         <div style={{
-                            background: 'var(--bg-secondary)',
-                            padding: '24px',
+                            background: '#09090b', // Hardcoded Dark BG
+                            padding: '30px',
                             borderRadius: '16px',
-                            maxWidth: '350px',
+                            maxWidth: '400px',
+                            width: '90%',
                             textAlign: 'center',
-                            boxShadow: '0 10px 40px rgba(0,0,0,0.4)',
-                            border: '1px solid var(--border-color)',
+                            boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+                            border: '1px solid #27272a',
                             animation: 'fadeIn 0.2s ease-out'
                         }} onClick={e => e.stopPropagation()}>
-                            <h3 style={{ margin: '0 0 12px 0', fontSize: '1.2rem', color: confirmDialog.isDanger ? '#ff4757' : 'var(--text-main)' }}>{confirmDialog.title}</h3>
-                            <p style={{ margin: '0 0 24px 0', color: 'var(--text-secondary)', lineHeight: '1.5' }}>{confirmDialog.message}</p>
-                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-                                <button
-                                    onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
-                                    style={{
-                                        padding: '10px 20px',
-                                        borderRadius: '10px',
-                                        border: '1px solid var(--border-color)',
-                                        background: 'transparent',
-                                        color: 'var(--text-main)',
-                                        cursor: 'pointer',
-                                        fontSize: '0.95rem'
-                                    }}
-                                >
-                                    Cancel
-                                </button>
+                            <h3 style={{ margin: '0 0 16px 0', fontSize: '1.3rem', color: confirmDialog.isDanger ? '#ef4444' : '#ffffff' }}>{confirmDialog.title}</h3>
+                            <p style={{ margin: '0 0 32px 0', color: '#a1a1aa', lineHeight: '1.6', fontSize: '0.95rem' }}>{confirmDialog.message}</p>
+                            <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
+                                {confirmDialog.showCancel !== false && (
+                                    <button
+                                        onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                                        style={{
+                                            padding: '12px 24px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #3f3f46',
+                                            background: 'transparent',
+                                            color: '#ffffff',
+                                            cursor: 'pointer',
+                                            fontSize: '0.95rem',
+                                            fontWeight: '500'
+                                        }}
+                                    >
+                                        {confirmDialog.cancelText || "Cancel"}
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(prev => ({ ...prev, isOpen: false })); }}
                                     style={{
-                                        padding: '10px 20px',
-                                        borderRadius: '10px',
+                                        padding: '12px 24px',
+                                        borderRadius: '8px',
                                         border: 'none',
-                                        background: confirmDialog.isDanger ? '#ff4757' : 'var(--primary-color)',
+                                        background: confirmDialog.isDanger ? '#ef4444' : '#22c55e',
                                         color: 'white',
                                         cursor: 'pointer',
-                                        fontWeight: 'bold',
+                                        fontWeight: '600',
                                         fontSize: '0.95rem'
                                     }}
                                 >
-                                    Confirm
+                                    {confirmDialog.confirmText || "Confirm"}
                                 </button>
                             </div>
                         </div>
-                    </div>
+                    </div>,
+                    document.body
                 )}
 
                 {/* Unified Action Sheet Modal */}
-                {selectedMessageForAction && (
+                {/* Unified Action Sheet Modal (Portal) */}
+                {selectedMessageForAction && createPortal(
                     <div style={{
                         position: 'fixed',
                         top: 0,
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                        zIndex: 1000,
+                        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                        zIndex: 9999, // High Z-Index to stay on top
                         display: 'flex',
                         alignItems: 'flex-end',
                         justifyContent: 'center',
-                        backdropFilter: 'blur(4px)'
+                        backdropFilter: 'blur(3px)'
                     }} onClick={() => setSelectedMessageForAction(null)}>
                         {/* If showing Delete Confirmation Sub-modal */}
                         {selectedMessageForAction.showDeleteConfirm ? (
                             <div style={{
-                                backgroundColor: 'var(--glass-bg)',
-                                backdropFilter: 'blur(16px)',
-                                border: '1px solid var(--glass-border)',
-                                padding: '24px',
-                                borderRadius: '24px',
+                                backgroundColor: '#09090b', // Hardcoded Dark
+                                padding: '30px',
+                                borderRadius: '16px',
                                 width: '90%',
-                                maxWidth: '400px',
-                                marginBottom: 'auto', // Re-center for confirmation dialog
-                                marginTop: 'auto',
-                                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+                                maxWidth: '350px',
+                                marginBottom: 'auto',
+                                marginTop: 'auto', // Centered
+                                boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
                                 textAlign: 'center',
-                                color: 'var(--text-main)'
+                                border: '1px solid #27272a'
                             }} onClick={(e) => e.stopPropagation()}>
-                                <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem' }}>Delete Message?</h3>
-                                <p style={{ margin: '0 0 20px 0', color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+                                <h3 style={{ margin: '0 0 16px 0', fontSize: '1.2rem', color: '#ffffff' }}>Delete Message?</h3>
+                                <p style={{ margin: '0 0 24px 0', color: '#a1a1aa', fontSize: '0.9rem' }}>
                                     {selectedMessageForAction.uid === auth.currentUser.uid
-                                        ? "You can delete this message for everyone or just for yourself."
+                                        ? "Delete for everyone or just for yourself?"
                                         : "This will delete the message from your device only."}
                                 </p>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     {selectedMessageForAction.uid === auth.currentUser.uid && (
                                         <button
                                             onClick={() => handleMessageAction('delete-confirm-everyone', selectedMessageForAction)}
                                             style={{
                                                 padding: '12px',
-                                                borderRadius: '12px',
+                                                borderRadius: '8px',
                                                 border: 'none',
-                                                background: '#ff4757',
+                                                background: '#ef4444',
                                                 color: 'white',
                                                 fontWeight: '600',
                                                 cursor: 'pointer'
@@ -1561,10 +1625,10 @@ const ChatRoom = (props) => {
                                         onClick={() => handleMessageAction('delete-confirm-me', selectedMessageForAction)}
                                         style={{
                                             padding: '12px',
-                                            borderRadius: '12px',
-                                            border: '1px solid var(--border-color)', // Changed from none to border 
-                                            background: 'transparent', // Transparent
-                                            color: 'var(--text-main)', // Use text color
+                                            borderRadius: '8px',
+                                            border: '1px solid #3f3f46',
+                                            background: 'transparent',
+                                            color: '#ffffff',
                                             fontWeight: '600',
                                             cursor: 'pointer'
                                         }}
@@ -1575,11 +1639,10 @@ const ChatRoom = (props) => {
                                         onClick={() => setSelectedMessageForAction(null)}
                                         style={{
                                             padding: '12px',
-                                            borderRadius: '12px',
+                                            borderRadius: '8px',
                                             border: 'none',
                                             background: 'transparent',
-                                            color: 'var(--text-secondary)',
-                                            marginTop: '5px',
+                                            color: '#a1a1aa',
                                             cursor: 'pointer'
                                         }}
                                     >
@@ -1654,7 +1717,8 @@ const ChatRoom = (props) => {
                                 </button>
                             </div>
                         )}
-                    </div>
+                    </div>,
+                    document.body
                 )}
             </div>
         </div >

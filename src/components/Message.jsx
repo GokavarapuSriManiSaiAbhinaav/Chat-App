@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
-import { IoTrash, IoPlay, IoPause, IoCheckmarkDone, IoCheckmark, IoStar } from 'react-icons/io5';
+import { IoTrash, IoPlay, IoPause, IoCheckmarkDone, IoCheckmark, IoStar, IoTime } from 'react-icons/io5';
 import { auth } from '../firebase';
 import './Message.css';
 
 const Message = React.memo(({ message, onAction, onReply, highlightText }) => {
-    const { text, uid, photoURL, createdAt, type, audioUrl, mediaUrl, imageUrl, fileName, read } = message;
+    // Destructure username as well
+    const { text, uid, photoURL, createdAt, type, audioUrl, mediaUrl, imageUrl, fileName, read, username, displayName, isPending } = message;
     const isSent = uid === auth.currentUser.uid;
     const [isPlaying, setIsPlaying] = useState(false);
     const audioRef = React.useRef(null);
+    const longPressTimerRef = React.useRef(null);
 
     const toggleAudio = () => {
         if (isPlaying) {
@@ -75,6 +77,19 @@ const Message = React.memo(({ message, onAction, onReply, highlightText }) => {
             {!isSent && <img className="message-avatar" src={photoURL} alt="avatar" loading="lazy" />}
 
             <div className="message-content-wrapper">
+                {/* Show Username for received messages (Hide Google Name) */}
+                {!isSent && type !== 'deleted' && (
+                    <span style={{
+                        fontSize: '0.75rem',
+                        color: 'var(--text-secondary)',
+                        marginBottom: '2px',
+                        marginLeft: '4px',
+                        display: 'block'
+                    }}>
+                        @{username ? username.replace(/^@/, '') : (displayName || 'user')}
+                    </span>
+                )}
+
                 <motion.div
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
@@ -83,15 +98,21 @@ const Message = React.memo(({ message, onAction, onReply, highlightText }) => {
                     // Long Press for Mobile Action Sheet
                     onTouchStart={() => {
                         if (type !== 'deleted') {
-                            window.longPressTimer = setTimeout(() => {
+                            longPressTimerRef.current = setTimeout(() => {
                                 if (onAction) onAction();
                             }, 500);
                         }
                     }}
+                    onTouchMove={() => {
+                        if (longPressTimerRef.current) {
+                            clearTimeout(longPressTimerRef.current);
+                            longPressTimerRef.current = null;
+                        }
+                    }}
                     onTouchEnd={() => {
-                        if (window.longPressTimer) {
-                            clearTimeout(window.longPressTimer);
-                            window.longPressTimer = null;
+                        if (longPressTimerRef.current) {
+                            clearTimeout(longPressTimerRef.current);
+                            longPressTimerRef.current = null;
                         }
                     }}
                     // Desktop Right-Click
@@ -177,7 +198,7 @@ const Message = React.memo(({ message, onAction, onReply, highlightText }) => {
                         <span className="message-time">{formatTime(createdAt)}</span>
                         {isSent && type !== 'deleted' && (
                             <span className={`read-status ${read ? 'read' : ''}`} style={{ color: read ? '#53bdeb' : 'inherit' }}>
-                                {read ? <IoCheckmarkDone /> : <IoCheckmark />}
+                                {isPending ? <IoTime /> : (read ? <IoCheckmarkDone /> : <IoCheckmark />)}
                             </span>
                         )}
                     </div>

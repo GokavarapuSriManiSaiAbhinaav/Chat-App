@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { IoSearch, IoExitOutline, IoTrashBinOutline, IoChatbubbleEllipsesOutline } from "react-icons/io5";
-import { collection, query, where, onSnapshot, getDocs, getDoc, doc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { IoSearch, IoExitOutline, IoTrashBinOutline } from "react-icons/io5";
+import { collection, query, where, onSnapshot, getDocs, getDoc, doc, writeBatch, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import "./UserList.css";
@@ -12,8 +13,52 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
     const [searching, setSearching] = useState(false);
     const [recentChats, setRecentChats] = useState([]);
     const [loadingRecent, setLoadingRecent] = useState(true);
-    const searchTimeoutRef = useRef(null);
     const { currentUser, logout } = useAuth();
+
+    // Modal State
+    const [deleteModal, setDeleteModal] = useState({ isOpen: false, chat: null });
+
+    // Long Press Refs
+    const longPressTimer = useRef(null);
+    const isLongPress = useRef(false);
+
+    const handleLongPressStart = (chat) => {
+        isLongPress.current = false;
+        longPressTimer.current = setTimeout(() => {
+            isLongPress.current = true;
+            // Vibrate if mobile
+            if (navigator.vibrate) navigator.vibrate(50);
+            setDeleteModal({ isOpen: true, chat });
+        }, 600); // 600ms hold
+    };
+
+    const handleLongPressEnd = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    };
+
+    const handleContextMenu = (e, chat) => {
+        e.preventDefault();
+        setDeleteModal({ isOpen: true, chat });
+    };
+
+    const confirmDeleteChat = async () => {
+        const { chat } = deleteModal;
+        if (!chat || !currentUser) return;
+
+        try {
+            await updateDoc(doc(db, "chats", chat.id), {
+                hiddenFor: arrayUnion(currentUser.uid)
+            });
+            // Update local state is handled by Snapshot listener filtering
+        } catch (error) {
+            console.error("Failed to delete chat", error);
+        } finally {
+            setDeleteModal({ isOpen: false, chat: null });
+        }
+    };
 
     // 1. Listen for Active Conversations
     useEffect(() => {
@@ -28,6 +73,12 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
             const chatDetails = await Promise.all(
                 snapshot.docs.map(async (chatDoc) => {
                     const data = chatDoc.data();
+
+                    // Filter: Hide if user has 'deleted' this chat
+                    if (data.hiddenFor && data.hiddenFor.includes(currentUser.uid)) {
+                        return null;
+                    }
+
                     if (data.type === 'group') {
                         // Group Chat
                         return {
@@ -45,36 +96,30 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
                     } else {
                         // 1-on-1 Chat
                         const otherUid = data.members.find(uid => uid !== currentUser.uid);
+                        // If no other member found, they deleted their account (orphaned chat) - Only show if I have not hidden it
+                        // but strict "WhatsApp behavior" implies if *I* delete the chat, it's gone regardless of their status.
+
                         if (!otherUid) return null;
 
-                        const userCache = JSON.parse(localStorage.getItem(`user_${otherUid}`));
-                        if (userCache) {
-                            return {
-                                id: chatDoc.id,
-                                chatId: chatDoc.id,
-                                ...userCache,
-                                unreadCount: data.unreadCount?.[currentUser.uid] || 0,
-                                lastInteraction: data.lastInteraction,
-                                lastMessage: data.lastMessage,
-                                lastMessageSender: data.lastMessageSender
-                            };
-                        }
+                        try {
+                            const userRef = doc(db, "users", otherUid);
+                            const userSnap = await getDoc(userRef);
 
-                        const userRef = doc(db, "users", otherUid);
-                        const userSnap = await getDoc(userRef);
-                        const userData = userSnap.exists() ? userSnap.data() : null;
-
-                        if (userData) {
-                            localStorage.setItem(`user_${otherUid}`, JSON.stringify(userData));
-                            return {
-                                id: chatDoc.id,
-                                chatId: chatDoc.id,
-                                ...userData,
-                                unreadCount: data.unreadCount?.[currentUser.uid] || 0,
-                                lastInteraction: data.lastInteraction,
-                                lastMessage: data.lastMessage,
-                                lastMessageSender: data.lastMessageSender
-                            };
+                            if (userSnap.exists()) {
+                                const userData = userSnap.data();
+                                return {
+                                    id: chatDoc.id,
+                                    chatId: chatDoc.id,
+                                    ...userData,
+                                    unreadCount: data.unreadCount?.[currentUser.uid] || 0,
+                                    lastInteraction: data.lastInteraction,
+                                    lastMessage: data.lastMessage,
+                                    lastMessageSender: data.lastMessageSender
+                                };
+                            }
+                            return null;
+                        } catch (e) {
+                            return null;
                         }
                     }
                     return null;
@@ -121,9 +166,13 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
         }
     };
 
-    const handleClearConversations = async () => {
-        if (!window.confirm("Clear all 1-to-1 conversations? Groups will not be deleted.")) return;
+    const [clearAllModal, setClearAllModal] = useState(false);
 
+    const handleClearConversations = () => {
+        setClearAllModal(true);
+    };
+
+    const confirmClearAll = async () => {
         try {
             const q = query(
                 collection(db, "chats"),
@@ -135,20 +184,56 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
             snapshot.docs.forEach((chatDoc) => {
                 const data = chatDoc.data();
                 if (data.type !== 'group') {
-                    batch.delete(chatDoc.ref);
+                    // Fix: Hide specifically for current user instead of deleting the document
+                    batch.update(chatDoc.ref, {
+                        hiddenFor: arrayUnion(currentUser.uid)
+                    });
                 }
             });
 
             await batch.commit();
             onSelectUser(null);
         } catch (error) {
-            alert("Failed to clear conversations.");
+            console.error("Failed to clear conversations", error);
+        } finally {
+            setClearAllModal(false);
         }
     };
 
-    const handleSelect = (user) => {
+    const handleSelect = async (user) => {
+        // Prevent click if it was a long press
+        if (isLongPress.current) return;
+
+        // If selecting from search results, check if we have a hidden chat with this user
+        // user.uid exists for search results. user.chatId exists for recent chats.
+        if (user.uid && !user.chatId) {
+            try {
+                const q = query(
+                    collection(db, "chats"),
+                    where("members", "array-contains", currentUser.uid)
+                );
+                const snapshot = await getDocs(q);
+                // Filter client-side for the specific 1-on-1 chat
+                const existingChat = snapshot.docs.find(doc => {
+                    const data = doc.data();
+                    return data.type !== 'group' && data.members.includes(user.uid);
+                });
+
+                if (existingChat) {
+                    const data = existingChat.data();
+                    // If it was hidden, unhide it immediately so it appears in the sidebar
+                    if (data.hiddenFor && data.hiddenFor.includes(currentUser.uid)) {
+                        await updateDoc(existingChat.ref, {
+                            hiddenFor: arrayRemove(currentUser.uid)
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error("Error restoring chat:", e);
+            }
+        }
+
         onSelectUser(user);
-        // Clear search if we selected someone from search results
         if (searchResults.length > 0) {
             setSearchTerm("");
             setSearchResults([]);
@@ -186,8 +271,6 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
                 </div>
             </div>
 
-
-
             <div className="search-bar-container">
                 <form onSubmit={handleSearch} className="search-form" style={{ display: 'flex', width: '100%', alignItems: 'center', background: 'var(--glass-input)', borderRadius: '12px', padding: '0 10px' }}>
                     <input
@@ -206,10 +289,9 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
             <div className="chats-header" style={{ padding: '0 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', marginBottom: '5px' }}>
                 <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px' }}>Chats</h4>
                 <button
-                    className="clear-convos-btn"
+                    className="delete-chats-trigger"
                     onClick={handleClearConversations}
                     title="Clear all 1-to-1 conversations"
-                    style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', opacity: 0.6 }}
                 >
                     <IoTrashBinOutline />
                 </button>
@@ -253,7 +335,13 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
                                         whileHover={{ backgroundColor: "var(--glass-input)" }}
                                         whileTap={{ scale: 0.98 }}
                                         className={`user-item ${selectedUser?.chatId === chat.chatId ? 'active' : ''}`}
-                                        onClick={() => onSelectUser(chat)}
+                                        onClick={() => handleSelect(chat)}
+                                        onContextMenu={(e) => handleContextMenu(e, chat)}
+                                        onTouchStart={() => handleLongPressStart(chat)}
+                                        onTouchEnd={handleLongPressEnd}
+                                        onMouseDown={() => handleLongPressStart(chat)}
+                                        onMouseUp={handleLongPressEnd}
+                                        onMouseLeave={handleLongPressEnd}
                                     >
                                         <img className="user-avatar" src={chat.photoURL} alt={chat.displayName} />
                                         <div className="user-info">
@@ -264,19 +352,22 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
                                             </div>
                                             <div className="user-info-bottom">
                                                 <span className="last-message">
-                                                    {/* Hide preview if clear chat was used (locally assuming unreadCount is reliable indicator or just empty) */}
-                                                    {chat.unreadCount > 0 ? "New message" : (
-                                                        <span className={chat.unreadCount > 0 ? 'unread' : ''}>
-                                                            {/* Just simplify to check unread */}
-                                                            {/* Logic for hiding preview: if unreadCount == 0, show empty? Or show last message text? */}
-                                                            {/* User expectation from Phase 2: "UserSearch.jsx to hide the recent chat preview if there are no unread messages" */}
-                                                            {/* So if unreadCount > 0 show "New message", else "" */}
-                                                            {chat.unreadCount > 0 ? "New message" : ""}
-                                                        </span>
-                                                    )}
+                                                    {chat.unreadCount > 0 ? "New message" : ""}
                                                 </span>
                                             </div>
                                         </div>
+                                        {/* Hover Delete Button for Desktop */}
+                                        <button
+                                            className="hover-delete-btn"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setDeleteModal({ isOpen: true, chat });
+                                            }}
+                                            title="Delete Chat"
+                                        >
+                                            <IoTrashBinOutline />
+                                        </button>
+
                                         {chat.unreadCount > 0 && selectedUser?.chatId !== chat.chatId && (
                                             <div className="unread-badge">{chat.unreadCount}</div>
                                         )}
@@ -287,6 +378,107 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
                     </>
                 )}
             </ul>
+
+            {/* Custom Delete Modal - Portaled */}
+            {createPortal(
+                <AnimatePresence>
+                    {deleteModal.isOpen && (
+                        <motion.div
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            style={{
+                                position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+                                background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                backdropFilter: 'blur(3px)'
+                            }}
+                            onClick={() => setDeleteModal({ isOpen: false, chat: null })}
+                        >
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+                                style={{
+                                    background: '#09090b', padding: '30px', borderRadius: '16px', width: '350px', maxWidth: '85%',
+                                    textAlign: 'center', boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+                                    border: '1px solid #27272a'
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <h3 style={{ margin: '0 0 24px 0', fontSize: '1.2rem', color: '#ffffff' }}>Delete chat?</h3>
+                                <div style={{ display: 'flex', justifyContent: 'center', gap: '16px' }}>
+                                    <button
+                                        onClick={() => setDeleteModal({ isOpen: false, chat: null })}
+                                        style={{
+                                            padding: '10px 20px', borderRadius: '8px', border: '1px solid #3f3f46',
+                                            background: 'transparent', color: '#ffffff', fontSize: '0.9rem', fontWeight: 500, cursor: 'pointer'
+                                        }}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={confirmDeleteChat}
+                                        style={{
+                                            padding: '10px 20px', borderRadius: '8px', border: 'none',
+                                            background: '#ef4444', color: 'white', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer'
+                                        }}
+                                    >
+                                        Delete chat
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
+
+            {/* Clear All Modal - Portaled */}
+            {createPortal(
+                <AnimatePresence>
+                    {clearAllModal && (
+                        <motion.div
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            style={{
+                                position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+                                background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                backdropFilter: 'blur(3px)'
+                            }}
+                            onClick={() => setClearAllModal(false)}
+                        >
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+                                style={{
+                                    background: '#09090b', padding: '30px', borderRadius: '16px', width: '350px', maxWidth: '85%',
+                                    textAlign: 'center', boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+                                    border: '1px solid #27272a'
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <h3 style={{ margin: '0 0 12px 0', fontSize: '1.2rem', color: '#ffffff' }}>Clear all chats?</h3>
+                                <p style={{ margin: '0 0 24px 0', fontSize: '0.9rem', color: '#a1a1aa' }}>Groups will not be deleted.</p>
+                                <div style={{ display: 'flex', justifyContent: 'center', gap: '16px' }}>
+                                    <button
+                                        onClick={() => setClearAllModal(false)}
+                                        style={{
+                                            padding: '10px 20px', borderRadius: '8px', border: '1px solid #3f3f46',
+                                            background: 'transparent', color: '#ffffff', fontSize: '0.9rem', fontWeight: 500, cursor: 'pointer'
+                                        }}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={confirmClearAll}
+                                        style={{
+                                            padding: '10px 20px', borderRadius: '8px', border: 'none',
+                                            background: '#ef4444', color: 'white', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer'
+                                        }}
+                                    >
+                                        Clear all
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
         </motion.div>
     );
 };

@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { IoClose, IoPerson, IoLockClosed, IoChatbubbles, IoNotifications, IoColorPalette, IoServer, IoInformationCircle, IoLogOut, IoTrash, IoArrowBack, IoCamera } from 'react-icons/io5';
+import { reauthenticateWithPopup } from "firebase/auth";
 import { doc, updateDoc, onSnapshot, deleteDoc, collection, query, where, getDocs, serverTimestamp, writeBatch } from "firebase/firestore";
-import { db, auth } from "../firebase";
+import { db, auth, googleProvider } from "../firebase";
 import { useAuth } from '../context/AuthContext';
 import { uploadToCloudinary } from '../utils/cloudinary';
+import { performAccountDeletion } from '../utils/accountCleanup';
 import './SettingsModal.css';
 
 // --- CONSTANTS ---
@@ -395,33 +397,61 @@ const SettingsModal = ({ isOpen, onClose, onToggleTheme, isDarkMode }) => {
             const url = await uploadToCloudinary(file, 'image');
             updateSetting('root', 'photoURL', url);
         } catch (error) {
-            alert("Failed to upload image.");
+            console.error(error);
+            // Silent or minor toast
         } finally { setUploadingAvatar(false); }
     };
 
     const handleLogout = useCallback(async () => {
-        try { await logout(); onClose(); } catch (e) { alert("Error logging out"); }
+        try { await logout(); onClose(); } catch (e) { console.error("Error logging out", e); }
     }, [logout, onClose]);
 
     const handleDelete = useCallback(() => {
         setConfirmDialog({
             isOpen: true,
-            title: "Delete Account",
-            message: "Are you sure? This is permanent and cannot be undone.",
+            title: "Delete account permanently?",
+            message: "This action cannot be undone.",
             isDanger: true,
             onConfirm: async () => {
                 try {
-                    await deleteDoc(doc(db, "users", auth.currentUser.uid));
+                    // Silent Re-auth
+                    await reauthenticateWithPopup(auth.currentUser, googleProvider);
+
+                    // 2. If successful, proceed with cleanup
+                    setLoading(true);
+
+                    // 3. Perform atomic cleanup (Firestore)
+                    await performAccountDeletion(auth.currentUser.uid);
+
+                    // 4. Delete Auth Account
                     await deleteAccount();
+
                     onClose();
-                } catch (e) { alert("Error deleting account"); }
+                    // Redirection to login happens automatically via AuthContext listener
+                } catch (e) {
+                    console.error("Delete Account Error:", e);
+                    setLoading(false);
+
+                    if (e.code === 'auth/popup-closed-by-user') {
+                        console.log("Re-auth cancelled");
+                    } else {
+                        // Silent technical error as requested
+                        console.error("Deletion failed", e);
+                    }
+                }
             }
         });
     }, [deleteAccount, onClose]);
 
     const handleClearCache = useCallback(() => {
         Object.keys(localStorage).forEach(key => { if (key.startsWith('user_')) localStorage.removeItem(key); });
-        alert("Cache cleared successfully.");
+        setConfirmDialog({
+            isOpen: true,
+            title: "Cache Cleared",
+            message: "Local cache has been cleared successfully.",
+            isDanger: false,
+            onConfirm: () => setConfirmDialog(prev => ({ ...prev, isOpen: false }))
+        });
     }, []);
 
     const handleClearAllChats = useCallback(() => {
@@ -442,8 +472,14 @@ const SettingsModal = ({ isOpen, onClose, onToggleTheme, isDarkMode }) => {
                         batch.update(chatRef, { [`clearedAt.${auth.currentUser.uid}`]: serverTimestamp() });
                     });
                     await batch.commit();
-                    alert("All chats cleared successfully.");
-                } catch (error) { alert("Failed to clear chats."); }
+                    setConfirmDialog(prev => ({
+                        isOpen: true,
+                        title: "Success",
+                        message: "All chats cleared.",
+                        isDanger: false,
+                        onConfirm: () => setConfirmDialog(p => ({ ...p, isOpen: false }))
+                    }));
+                } catch (error) { console.error("Failed to clear chats", error); }
                 finally { setLoading(false); }
             }
         });
@@ -459,13 +495,63 @@ const SettingsModal = ({ isOpen, onClose, onToggleTheme, isDarkMode }) => {
     return (
         <div className="settings-overlay" onClick={onClose}>
             {confirmDialog.isOpen && (
-                <div className="confirm-overlay" onClick={(e) => { e.stopPropagation(); setConfirmDialog(prev => ({ ...prev, isOpen: false })); }}>
-                    <div className="confirm-modal" onClick={e => e.stopPropagation()}>
-                        <h3 className="confirm-title" style={{ color: confirmDialog.isDanger ? 'var(--danger)' : 'var(--text-primary)' }}>{confirmDialog.title}</h3>
-                        <p className="confirm-desc">{confirmDialog.message}</p>
-                        <div className="confirm-actions">
-                            <button className="confirm-btn-cancel" onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}>Cancel</button>
-                            <button className="confirm-btn-confirm" onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(prev => ({ ...prev, isOpen: false })); }} style={{ background: confirmDialog.isDanger ? 'var(--danger)' : 'var(--accent)' }}>Confirm</button>
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                    zIndex: 9999,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backdropFilter: 'blur(3px)'
+                }} onClick={(e) => { e.stopPropagation(); setConfirmDialog(prev => ({ ...prev, isOpen: false })); }}>
+                    <div style={{
+                        background: '#09090b',
+                        padding: '30px',
+                        borderRadius: '16px',
+                        maxWidth: '400px',
+                        width: '90%',
+                        textAlign: 'center',
+                        boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+                        border: '1px solid #27272a',
+                        animation: 'fadeIn 0.2s ease-out'
+                    }} onClick={e => e.stopPropagation()}>
+                        <h3 style={{ margin: '0 0 16px 0', fontSize: '1.3rem', color: confirmDialog.isDanger ? '#ef4444' : '#ffffff' }}>{confirmDialog.title}</h3>
+                        <p style={{ margin: '0 0 32px 0', color: '#a1a1aa', lineHeight: '1.6', fontSize: '0.95rem' }}>{confirmDialog.message}</p>
+                        <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
+                            <button
+                                onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                                style={{
+                                    padding: '12px 24px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #3f3f46',
+                                    background: 'transparent',
+                                    color: '#ffffff',
+                                    cursor: 'pointer',
+                                    fontSize: '0.95rem',
+                                    fontWeight: '500'
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(prev => ({ ...prev, isOpen: false })); }}
+                                style={{
+                                    padding: '12px 24px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: confirmDialog.isDanger ? '#ef4444' : '#22c55e',
+                                    color: 'white',
+                                    cursor: 'pointer',
+                                    fontWeight: '600',
+                                    fontSize: '0.95rem'
+                                }}
+                            >
+                                Confirm
+                            </button>
                         </div>
                     </div>
                 </div>

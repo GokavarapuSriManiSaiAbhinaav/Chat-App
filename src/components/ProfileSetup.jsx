@@ -34,23 +34,40 @@ const ProfileSetup = ({ onComplete }) => {
         return querySnapshot.empty;
     };
 
+    const [usernameError, setUsernameError] = useState("");
+    const [isChecking, setIsChecking] = useState(false);
+
+    // Debounce check
+    useEffect(() => {
+        const timer = setTimeout(async () => {
+            if (username.length >= 3) {
+                setIsChecking(true);
+                const isUnique = await checkUsernameUnique(username);
+                if (!isUnique) {
+                    setUsernameError("Username is already taken");
+                } else {
+                    setUsernameError("");
+                }
+                setIsChecking(false);
+            } else if (username.length > 0) {
+                setUsernameError("Must be at least 3 chars");
+            } else {
+                setUsernameError("");
+            }
+        }, 500);
+
+        return () => clearTimeout(timer);
+    }, [username]);
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError("");
+
+        if (usernameError || username.length < 3) {
+            return; // Block submit if invalid
+        }
+
         setLoading(true);
-
-        if (username.length < 3) {
-            setError("Username must be at least 3 characters long.");
-            setLoading(false);
-            return;
-        }
-
-        const isUnique = await checkUsernameUnique(username);
-        if (!isUnique) {
-            setError("Username is already taken. Please choose another.");
-            setLoading(false);
-            return;
-        }
 
         try {
             // Saving photoURL for app consistency (this is the chosen avatar)
@@ -90,7 +107,19 @@ const ProfileSetup = ({ onComplete }) => {
                             value={username}
                             onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s/g, '').replace(/^@/, ''))}
                             required
+                            style={usernameError ? { borderColor: '#e74c3c' } : {}}
                         />
+                        {/* Inline Error Message */}
+                        {usernameError && (
+                            <div style={{ color: '#e74c3c', fontSize: '0.85rem', marginTop: '6px', textAlign: 'left', fontWeight: '500' }}>
+                                {usernameError}
+                            </div>
+                        )}
+                        {isChecking && !usernameError && (
+                            <div style={{ color: '#7f8c8d', fontSize: '0.85rem', marginTop: '6px', textAlign: 'left' }}>
+                                Checking availability...
+                            </div>
+                        )}
                     </div>
 
                     <div className="avatar-section">

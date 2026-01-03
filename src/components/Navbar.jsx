@@ -23,21 +23,7 @@ const Navbar = ({ onToggleMenu, onToggleTheme, onToggleGroupModal, onLogoClick, 
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [showProfileMenu]);
 
-    const handleDeleteAccount = async () => {
-        const confirmDelete = window.confirm("Are you sure you want to delete your account? This action is permanent and will remove all your profile data.");
-        if (confirmDelete) {
-            try {
-                // Delete from Firestore
-                await deleteDoc(doc(db, "users", currentUser.uid));
-                // Delete from Auth
-                await deleteAccount();
-                alert("Account deleted successfully.");
-            } catch (error) {
-                console.error("Error deleting account:", error);
-                alert("Error deleting account. You may need to log out and log in again to perform this sensitive action.");
-            }
-        }
-    };
+
 
     return (
         <div className='navbar'>
@@ -83,9 +69,7 @@ const Navbar = ({ onToggleMenu, onToggleTheme, onToggleGroupModal, onLogoClick, 
                                         <button className="dropdown-item" onClick={() => logout()}>
                                             <FaSignOutAlt /> Log out
                                         </button>
-                                        <button className="dropdown-item delete-item" onClick={handleDeleteAccount}>
-                                            <FaTrashAlt /> Delete Account
-                                        </button>
+
                                     </motion.div>
                                 )}
                             </AnimatePresence>
