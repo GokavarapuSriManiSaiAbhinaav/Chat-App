@@ -78,17 +78,7 @@ const Message = React.memo(({ message, onAction, onReply, highlightText }) => {
 
             <div className="message-content-wrapper">
                 {/* Show Username for received messages (Hide Google Name) */}
-                {!isSent && type !== 'deleted' && (
-                    <span style={{
-                        fontSize: '0.75rem',
-                        color: 'var(--text-secondary)',
-                        marginBottom: '2px',
-                        marginLeft: '4px',
-                        display: 'block'
-                    }}>
-                        @{username ? username.replace(/^@/, '') : (displayName || 'user')}
-                    </span>
-                )}
+
 
                 <motion.div
                     whileHover={{ scale: 1.01 }}
@@ -99,7 +89,7 @@ const Message = React.memo(({ message, onAction, onReply, highlightText }) => {
                     onTouchStart={() => {
                         if (type !== 'deleted') {
                             longPressTimerRef.current = setTimeout(() => {
-                                if (onAction) onAction();
+                                if (onAction) onAction(message);
                             }, 500);
                         }
                     }}
@@ -118,7 +108,7 @@ const Message = React.memo(({ message, onAction, onReply, highlightText }) => {
                     // Desktop Right-Click
                     onContextMenu={(e) => {
                         e.preventDefault();
-                        if (type !== 'deleted' && onAction) onAction();
+                        if (type !== 'deleted' && onAction) onAction(message);
                     }}
                 >
                     {/* Quoted Reply */}
@@ -235,7 +225,7 @@ const Message = React.memo(({ message, onAction, onReply, highlightText }) => {
                 {/* Desktop Hover Icon (Hidden on touch devices by nature of hover, or explicit CSS if needed) */}
                 {/* Desktop Hover Action Icon */}
                 {type !== 'deleted' && (
-                    <button className="message-delete-btn desktop-only" onClick={onAction} style={{ opacity: 0.5 }} title="Message Options">
+                    <button className="message-delete-btn desktop-only" onClick={() => onAction(message)} style={{ opacity: 0.5 }} title="Message Options">
                         <IoTrash />
                         {/* We use Trash icon as base but it triggers the menu now. 
                             Ideally switch to IoEllipsisVertical but IoTrash is what we have imported for now. 

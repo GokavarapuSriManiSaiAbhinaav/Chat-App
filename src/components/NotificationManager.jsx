@@ -52,6 +52,7 @@ const NotificationManager = () => {
     }, [currentUser]);
 
     const handleEnable = async () => {
+        console.log("🔔 NotificationManager: 'Yes, Notify Me' clicked");
         try {
             const permission = await Notification.requestPermission();
             if (permission === 'granted') {
@@ -75,6 +76,7 @@ const NotificationManager = () => {
     };
 
     const handleLater = () => {
+        console.log("🔔 NotificationManager: 'Maybe Later' clicked");
         setShowModal(false);
     };
 
@@ -83,13 +85,12 @@ const NotificationManager = () => {
     return createPortal(
         <div style={{
             position: 'fixed',
-            isDirectory: 'flex',
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
             backgroundColor: 'rgba(0, 0, 0, 0.8)',
-            zIndex: 9999,
+            zIndex: 10000,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

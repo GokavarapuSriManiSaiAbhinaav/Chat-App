@@ -23,9 +23,12 @@
     width: 600px;
     height: 600px;
     border-radius: 50%;
-    filter: blur(80px);
+    border-radius: 50%;
+    filter: blur(40px);
     opacity: 0.6;
     z-index: 1;
+    /* Hardware acceleration */
+    transform: translateZ(0);
 }
 
 .setup-container::before {

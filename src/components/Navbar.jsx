@@ -4,6 +4,7 @@ import "./Navbar.css";
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaSun, FaMoon, FaSignOutAlt, FaTrashAlt } from 'react-icons/fa';
 import { MdGroupAdd, MdSettings } from 'react-icons/md';
+import { IoInformationCircle } from 'react-icons/io5';
 import { db } from '../firebase';
 import SettingsModal from "./SettingsModal";
 import { doc, deleteDoc } from 'firebase/firestore';
@@ -12,6 +13,7 @@ const Navbar = ({ onToggleMenu, onToggleTheme, onToggleGroupModal, onLogoClick, 
     const { currentUser, logout, deleteAccount } = useAuth();
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [settingsTab, setSettingsTab] = useState('account');
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -22,8 +24,6 @@ const Navbar = ({ onToggleMenu, onToggleTheme, onToggleGroupModal, onLogoClick, 
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [showProfileMenu]);
-
-
 
     return (
         <div className='navbar'>
@@ -42,6 +42,9 @@ const Navbar = ({ onToggleMenu, onToggleTheme, onToggleGroupModal, onLogoClick, 
             <div className='user'>
                 {currentUser && (
                     <>
+                        <button className="theme-toggle-btn" onClick={() => { setSettingsTab('about'); setIsSettingsOpen(true); }} title="About">
+                            <IoInformationCircle />
+                        </button>
                         <button className="theme-toggle-btn" onClick={onToggleTheme}>
                             {isDarkMode ? <FaSun /> : <FaMoon />}
                         </button>
@@ -63,7 +66,7 @@ const Navbar = ({ onToggleMenu, onToggleTheme, onToggleGroupModal, onLogoClick, 
                                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
                                         className="profile-dropdown"
                                     >
-                                        <button className="dropdown-item" onClick={() => { setShowProfileMenu(false); setIsSettingsOpen(true); }}>
+                                        <button className="dropdown-item" onClick={() => { setShowProfileMenu(false); setSettingsTab('account'); setIsSettingsOpen(true); }}>
                                             <MdSettings /> Settings
                                         </button>
                                         <button className="dropdown-item" onClick={() => logout()}>
@@ -77,7 +80,13 @@ const Navbar = ({ onToggleMenu, onToggleTheme, onToggleGroupModal, onLogoClick, 
                     </>
                 )}
             </div>
-            <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onToggleTheme={onToggleTheme} isDarkMode={isDarkMode} />
+            <SettingsModal
+                isOpen={isSettingsOpen}
+                onClose={() => setIsSettingsOpen(false)}
+                onToggleTheme={onToggleTheme}
+                isDarkMode={isDarkMode}
+                initialTab={settingsTab}
+            />
         </div>
     );
 };

@@ -106,10 +106,10 @@ const MOOD_META = {
 export const detectMood = (messages) => {
     if (!messages || messages.length === 0) return null;
 
-    // Sliding Window: Last 3 Text Messages (Hyper-focused on present)
+    // Sliding Window: Last 2 Text Messages (Hyper-focused on present)
     const textMessages = messages
         .filter(m => m.type === 'text' && m.text)
-        .slice(-3);
+        .slice(-2);
 
     if (textMessages.length === 0) return MOOD_META.neutral;
 

@@ -316,6 +316,28 @@ body.dark-mode {
     /* Glow */
 }
 
+/* --- FEEDBACK INPUT --- */
+.feedback-input {
+    width: 100%;
+    padding: 14px 20px;
+    background: var(--sm-surface);
+    border: 2px solid transparent;
+    border-radius: var(--radius-md);
+    color: var(--sm-text);
+    outline: none;
+    font-size: 15px;
+    font-weight: 500;
+    transition: all 0.2s;
+    resize: none;
+    font-family: inherit;
+}
+
+.feedback-input:focus {
+    background: var(--sm-bg);
+    border-color: var(--sm-accent);
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+}
+
 /* --- TOGGLES & ITEMS --- */
 .setting-item {
     display: flex;

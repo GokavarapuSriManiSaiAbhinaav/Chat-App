@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { IoClose, IoPerson, IoLockClosed, IoChatbubbles, IoNotifications, IoColorPalette, IoServer, IoInformationCircle, IoLogOut, IoTrash, IoArrowBack, IoCamera } from 'react-icons/io5';
 import { reauthenticateWithPopup } from "firebase/auth";
-import { doc, updateDoc, onSnapshot, deleteDoc, collection, query, where, getDocs, serverTimestamp, writeBatch } from "firebase/firestore";
+import { doc, updateDoc, onSnapshot, deleteDoc, collection, query, where, getDocs, serverTimestamp, writeBatch, addDoc } from "firebase/firestore";
 import { db, auth, googleProvider } from "../firebase";
 import { useAuth } from '../context/AuthContext';
 import { uploadToCloudinary } from '../utils/cloudinary';
@@ -46,8 +46,8 @@ const SettingDropdown = memo(({ label, value, options, onChange }) => (
 ));
 
 // --- SIDEBAR COMPONENT (MEMOIZED) ---
-const SettingsSidebar = memo(({ activeTab, onTabChange, mobileView }) => (
-    <div className={`settings-sidebar ${mobileView === 'sidebar' ? 'mobile-visible' : ''}`}>
+const SettingsSidebar = memo(({ activeTab, onTabChange }) => (
+    <div className="settings-sidebar">
         <div className="sidebar-title">Settings</div>
         {CATEGORIES.map(cat => (
             <div
@@ -77,7 +77,12 @@ const SettingsContent = ({
     uploadingAvatar,
     onAvatarChange,
     onClearCache,
-    onClearChats
+    onClearChats,
+    feedbackText,
+    setFeedbackText,
+    sendingFeedback,
+    feedbackStatus,
+    onSendFeedback
 }) => {
 
     // Helper for easier updates
@@ -88,11 +93,7 @@ const SettingsContent = ({
     const renderHeader = () => (
         <div className="settings-content-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                {window.innerWidth <= 768 && (
-                    <button className="close-btn" onClick={() => setMobileView('sidebar')}>
-                        <IoArrowBack />
-                    </button>
-                )}
+
                 <h2>{CATEGORIES.find(c => c.id === activeTab)?.label}</h2>
             </div>
             <button className="close-btn" onClick={onClose}><IoClose /></button>
@@ -157,12 +158,7 @@ const SettingsContent = ({
                                 checked={settings.privacy.typing}
                                 onChange={(val) => handleUpdate('privacy', 'typing', val)}
                             />
-                            <SettingDropdown
-                                label="Who can message me"
-                                value={settings.privacy.messagesFrom}
-                                options={[['everyone', 'Everyone'], ['contacts', 'Contacts Only']]}
-                                onChange={(val) => handleUpdate('privacy', 'messagesFrom', val)}
-                            />
+
                         </div>
                     </div>
                 );
@@ -176,12 +172,7 @@ const SettingsContent = ({
                                 checked={settings.chatSettings.enterToSend}
                                 onChange={(val) => handleUpdate('chatSettings', 'enterToSend', val)}
                             />
-                            <SettingDropdown
-                                label="Media Auto-Download"
-                                value={settings.chatSettings.autoDownload}
-                                options={[['always', 'Always'], ['wifi', 'Wi-Fi Only'], ['never', 'Never']]}
-                                onChange={(val) => handleUpdate('chatSettings', 'autoDownload', val)}
-                            />
+
                             <SettingDropdown
                                 label="Default Disappearing Timer"
                                 value={settings.chatSettings.defaultDisappear}
@@ -243,12 +234,7 @@ const SettingsContent = ({
                                 options={[['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']]}
                                 onChange={(val) => handleUpdate('appearance', 'fontSize', val)}
                             />
-                            <SettingDropdown
-                                label="Bubble Size"
-                                value={settings.appearance?.bubbleSize || 'medium'}
-                                options={[['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']]}
-                                onChange={(val) => handleUpdate('appearance', 'bubbleSize', val)}
-                            />
+
                         </div>
                     </div>
                 );
@@ -256,12 +242,7 @@ const SettingsContent = ({
                 return (
                     <div className="settings-body">
                         <div className="setting-group">
-                            <SettingDropdown
-                                label="Media Upload Quality"
-                                value={settings.mediaSettings.uploadQuality}
-                                options={[['high', 'High (Original)'], ['medium', 'Medium (Faster)']]}
-                                onChange={(val) => handleUpdate('mediaSettings', 'uploadQuality', val)}
-                            />
+
                             <SettingToggle
                                 label="Voice Messages"
                                 checked={settings.mediaSettings.allowVoice}
@@ -279,19 +260,54 @@ const SettingsContent = ({
                 );
             case 'about':
                 return (
-                    <div className="settings-body" style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <h2 style={{ fontSize: '2rem', marginBottom: '10px', color: 'var(--accent)' }}>U & ME</h2>
-                        <p style={{ color: 'var(--text-secondary)', marginBottom: '30px' }}>Version 3.5.0</p>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', alignItems: 'center' }}>
-                            <div style={{ padding: '15px', background: 'var(--bg-secondary)', borderRadius: '10px', width: '100%' }}>
-                                <h3 style={{ fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '5px' }}>Privacy & Security</h3>
-                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                    Your chats are secured with end-to-end encryption. Only you and the person you're communicating with can read or listen to them.
-                                </p>
+                    <div className="settings-body">
+                        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                            <h2 style={{ fontSize: '2rem', marginBottom: '5px', color: 'var(--sm-accent)', fontWeight: '800' }}>U & ME</h2>
+                            <p style={{ color: 'var(--sm-text-sec)', marginBottom: '20px', fontSize: '0.9rem' }}>Secure real-time chat application designed for fast, private, and reliable communication.</p>
+
+                            <div style={{ background: 'var(--sm-surface)', padding: '20px', borderRadius: '16px', textAlign: 'left', marginBottom: '30px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--sm-text)' }}>
+                                    🔐 <span>End-to-end encrypted messages</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--sm-text)' }}>
+                                    ⚡ <span>Real-time messaging with smooth performance</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: 'var(--sm-text)' }}>
+                                    📱 <span>Optimized for mobile and desktop</span>
+                                </div>
                             </div>
-                            <a href="#" onClick={(e) => { e.preventDefault(); alert("Call: 8885322599"); }} style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 'bold' }}>
-                                Contact Support: 8885322599
-                            </a>
+
+                            <div style={{ marginBottom: '30px', color: 'var(--sm-text-sec)', fontSize: '0.9rem' }}>
+                                <p style={{ margin: '5px 0' }}><strong>Developer:</strong> Abhi (B.Tech, CSE)</p>
+                                <p style={{ margin: '5px 0' }}><strong>Support:</strong> abhientertainments5@gmail.com</p>
+                                <p style={{ margin: '5px 0' }}><strong>Version:</strong> 1.0.0</p>
+                            </div>
+
+                            {/* Feedback Section */}
+                            <div className="feedback-section" style={{ borderTop: '1px solid var(--sm-border)', paddingTop: '20px', marginTop: '20px' }}>
+                                <h3 style={{ fontSize: '1.1rem', color: 'var(--sm-text)', marginBottom: '15px' }}>Send Feedback</h3>
+                                <textarea
+                                    className="feedback-input"
+                                    placeholder="Tell us what you think..."
+                                    value={feedbackText}
+                                    onChange={(e) => setFeedbackText(e.target.value)}
+                                    rows={4}
+                                />
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px', alignItems: 'center', gap: '10px' }}>
+                                    {feedbackStatus === 'success' && <span style={{ color: '#22c55e', fontSize: '0.9rem', fontWeight: 'bold' }}>Thank you for your feedback ❤️</span>}
+                                    {feedbackStatus === 'error' && <span style={{ color: '#ef4444', fontSize: '0.9rem' }}>Failed to send. Try again!</span>}
+                                    {feedbackStatus === 'cooldown' && <span style={{ color: '#eab308', fontSize: '0.9rem' }}>Please wait a moment...</span>}
+
+                                    <button
+                                        className="primary-btn"
+                                        onClick={onSendFeedback}
+                                        disabled={sendingFeedback}
+                                        style={{ opacity: sendingFeedback ? 0.7 : 1, width: 'auto', padding: '10px 20px' }}
+                                    >
+                                        {sendingFeedback ? 'Sending...' : 'Send Feedback'}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 );
@@ -300,7 +316,7 @@ const SettingsContent = ({
     };
 
     return (
-        <div className={`settings-content ${window.innerWidth <= 768 && mobileView === 'sidebar' ? 'mobile-hidden' : ''}`}>
+        <div className="settings-content">
             {renderHeader()}
             {renderBody()}
         </div>
@@ -308,12 +324,17 @@ const SettingsContent = ({
 };
 
 // --- MAIN COMPONENT ---
-const SettingsModal = ({ isOpen, onClose, onToggleTheme, isDarkMode }) => {
+const SettingsModal = ({ isOpen, onClose, onToggleTheme, isDarkMode, initialTab = 'account' }) => {
     const { logout, deleteAccount } = useAuth();
-    const [activeTab, setActiveTab] = useState('account');
+    const [activeTab, setActiveTab] = useState(initialTab);
     const [mobileView, setMobileView] = useState('sidebar');
     const [loading, setLoading] = useState(true);
     const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+    // Feedback State
+    const [feedbackText, setFeedbackText] = useState("");
+    const [sendingFeedback, setSendingFeedback] = useState(false);
+    const [feedbackStatus, setFeedbackStatus] = useState(null); // 'success' | 'error'
 
     // Custom Confirm Dialog State
     const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', isDanger: false, onConfirm: null });
@@ -322,18 +343,64 @@ const SettingsModal = ({ isOpen, onClose, onToggleTheme, isDarkMode }) => {
     const [settings, setSettings] = useState({
         username: '',
         photoURL: '',
-        privacy: { lastSeen: 'everyone', readReceipts: true, typing: true, messagesFrom: 'everyone' },
-        chatSettings: { enterToSend: false, autoDownload: 'wifi', defaultDisappear: 'off' },
+        privacy: { lastSeen: 'everyone', readReceipts: true, typing: true },
+        chatSettings: { enterToSend: false, defaultDisappear: 'off' },
         notifications: { enabled: true, preview: true, sound: true, vibration: true },
-        appearance: { fontSize: 'normal', bubbleSize: 'medium' },
-        mediaSettings: { uploadQuality: 'high', allowVoice: true }
+        appearance: { fontSize: 'normal' },
+        mediaSettings: { allowVoice: true }
     });
 
     const debounceTimeout = useRef(null);
+    const lastFeedbackTime = useRef(0);
+
+    const handleSendFeedback = async () => {
+        if (!feedbackText.trim()) return;
+
+        // Cooldown Check (30 seconds)
+        const now = Date.now();
+        if (now - lastFeedbackTime.current < 30000) {
+            setFeedbackStatus('cooldown');
+            setTimeout(() => setFeedbackStatus(null), 3000);
+            return;
+        }
+
+        setSendingFeedback(true);
+        setFeedbackStatus(null);
+
+        try {
+            // Write to Firestore 'feedback' collection
+            const feedbackRef = collection(db, "feedback");
+            await addDoc(feedbackRef, {
+                uid: auth.currentUser.uid,
+                username: settings.username || auth.currentUser.displayName || 'Anonymous',
+                email: auth.currentUser.email || 'N/A',
+                message: feedbackText.trim(),
+                timestamp: serverTimestamp(),
+                platform: window.innerWidth <= 768 ? 'mobile' : 'web',
+                userAgent: navigator.userAgent
+            });
+
+            setFeedbackStatus('success');
+            setFeedbackText("");
+            lastFeedbackTime.current = Date.now();
+            setTimeout(() => setFeedbackStatus(null), 5000);
+        } catch (error) {
+            console.error("Feedback error:", error);
+            setFeedbackStatus('error');
+            setTimeout(() => setFeedbackStatus(null), 5000);
+        } finally {
+            setSendingFeedback(false);
+        }
+    };
 
     // Initialize & Listen to Firestore
     useEffect(() => {
-        if (!isOpen || !auth.currentUser) return;
+        if (!isOpen) return;
+
+        // Reset tab to initialTab whenever modal opens
+        setActiveTab(initialTab);
+
+        if (!auth.currentUser) return;
         setLoading(true);
         const userRef = doc(db, "users", auth.currentUser.uid);
         const unsubscribe = onSnapshot(userRef, (docSnap) => {
@@ -579,6 +646,11 @@ const SettingsModal = ({ isOpen, onClose, onToggleTheme, isDarkMode }) => {
                     onAvatarChange={handleAvatarChange}
                     onClearCache={handleClearCache}
                     onClearChats={handleClearAllChats}
+                    feedbackText={feedbackText}
+                    setFeedbackText={setFeedbackText}
+                    sendingFeedback={sendingFeedback}
+                    feedbackStatus={feedbackStatus}
+                    onSendFeedback={handleSendFeedback}
                 />
             </div>
         </div>

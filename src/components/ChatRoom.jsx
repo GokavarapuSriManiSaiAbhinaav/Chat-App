@@ -18,6 +18,19 @@ import "./ChatRoom.css";
 
 const ChatRoom = (props) => {
     const { selectedUser, setSelectedUser } = props;
+    // Mobile Layout Logic: If standard viewport width < 768px (common breakpoint), 
+    // AND a chat is NOT selected, we should not render this component at all to avoid overlap.
+    // However, CSS media queries usually handle display:none. 
+    // The user asked for NO CSS changes. So we must force it here.
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth <= 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+
     const isChatActive = !!selectedUser;
     const dummy = useRef();
     const [messages, setMessages] = useState([]);
@@ -42,14 +55,31 @@ const ChatRoom = (props) => {
     const [messagesLimit, setMessagesLimit] = useState(20);
     const typingTimeoutRef = useRef(null);
 
-    // Custom Confirm Dialog State
+    // Custom Confirm Dialog state
+    // We strictly use this for ALL alerts now to be "consistent on laptop and mobile"
     const [confirmDialog, setConfirmDialog] = useState({
         isOpen: false,
         title: '',
         message: '',
         isDanger: false,
-        onConfirm: null
+        onConfirm: null,
+        showCancel: true, // New prop to toggle Cancel button (false for simple alerts)
+        confirmText: 'Confirm',
+        cancelText: 'Cancel'
     });
+
+    // Helper to show generic alert modal
+    const showAlert = (title, message) => {
+        setConfirmDialog({
+            isOpen: true,
+            title,
+            message,
+            isDanger: false,
+            showCancel: false,
+            confirmText: "OK",
+            onConfirm: () => { }
+        });
+    };
 
     // Recording State
     const [isRecording, setIsRecording] = useState(false);
@@ -59,6 +89,8 @@ const ChatRoom = (props) => {
     const [pendingVoiceMessage, setPendingVoiceMessage] = useState(null);
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
+    const shouldScrollBottomRef = useRef(false); // Flag for smart auto-scroll
+    const isInitialLoadRef = useRef(true); // Flag for instant initial scroll
     const shouldSendRef = useRef(true); // Ref to check if we should send or discard
     const fileInputRef = useRef(null);
 
@@ -199,9 +231,11 @@ const ChatRoom = (props) => {
                 }
             }
 
-            setTimeout(() => {
-                dummy.current?.scrollIntoView({ behavior: "smooth" });
-            }, 100);
+            // Scroll ONLY on initial load of this chat
+            // For subsequent updates, we let user scroll manually or handle via separate logic (e.g. only if they sent it)
+            // setTimeout(() => {
+            //    dummy.current?.scrollIntoView({ behavior: "smooth" });
+            // }, 100);
         });
 
         return () => unsubscribeMessages();
@@ -226,6 +260,17 @@ const ChatRoom = (props) => {
         }, 100);
 
         return () => clearTimeout(timer);
+    }, [messages]);
+
+    // Effect: Smart Scroll on New Sent Message & Initial Load
+    useEffect(() => {
+        if (isInitialLoadRef.current) {
+            dummy.current?.scrollIntoView({ behavior: "auto" });
+            isInitialLoadRef.current = false;
+        } else if (shouldScrollBottomRef.current) {
+            dummy.current?.scrollIntoView({ behavior: "smooth" });
+            shouldScrollBottomRef.current = false;
+        }
     }, [messages]);
 
     // Effect: Recording Timer
@@ -355,6 +400,13 @@ const ChatRoom = (props) => {
         setMatchedMessageIds([]);
         setCurrentMatchIndex(-1);
         setMessagesLimit(20);
+        setMatchedMessageIds([]);
+        setCurrentMatchIndex(-1);
+        setMessagesLimit(20);
+
+        // Mark as initial load for this new chat to trigger instant scroll
+        isInitialLoadRef.current = true;
+        // setTimeout(() => dummy.current?.scrollIntoView({ behavior: "auto" }), 100);
     }, [getChatId, setSelectedUser]);
 
     const handleDeleteGroup = async () => {
@@ -369,7 +421,11 @@ const ChatRoom = (props) => {
                     setSelectedUser(null);
                     setChatId(null);
                 } catch (error) {
-                    alert("Failed to delete group.");
+                    if (isGroupAdmin(selectedUser)) {
+                        // Delete Group Code...
+                    } else {
+                        showAlert("Error", "Failed to delete group.");
+                    }
                 }
             }
         });
@@ -391,7 +447,7 @@ const ChatRoom = (props) => {
                     setMessages([]); // Instant local clear
                 } catch (error) {
                     console.error("Error clearing chat:", error);
-                    alert("Failed to clear chat");
+                    showAlert("Error", "Failed to clear chat");
                 }
             }
         });
@@ -480,13 +536,18 @@ const ChatRoom = (props) => {
             try {
                 const q = query(
                     collection(db, "chats", chatId, "messages"),
-                    where("starredBy", "array-contains", auth.currentUser.uid),
-                    orderBy("createdAt", "desc")
+                    where("starredBy", "array-contains", auth.currentUser.uid)
                 );
                 const querySnapshot = await getDocs(q);
                 const starred = [];
                 querySnapshot.forEach((doc) => {
                     starred.push({ id: doc.id, ...doc.data() });
+                });
+                // Sort client-side to avoid index requirement
+                starred.sort((a, b) => {
+                    const timeA = a.createdAt?.toMillis() || 0;
+                    const timeB = b.createdAt?.toMillis() || 0;
+                    return timeB - timeA;
                 });
                 setStarredMessages(starred);
             } catch (error) {
@@ -526,6 +587,7 @@ const ChatRoom = (props) => {
                 const now = Date.now();
                 const hasExpired = messages.some(msg => msg.expiresAt && msg.expiresAt.toMillis() < now);
                 if (hasExpired) {
+                    console.log("🧹 removing expired messages client-side");
                     setMessages(current => current.filter(msg => !msg.expiresAt || msg.expiresAt.toMillis() > now));
                 }
             }
@@ -577,9 +639,11 @@ const ChatRoom = (props) => {
         const newReaction = currentReaction === emoji ? deleteField() : emoji;
 
         try {
-            await updateDoc(messageRef, {
-                [`reactions.${currentUser.uid}`]: newReaction
-            });
+            await setDoc(messageRef, {
+                reactions: {
+                    [currentUser.uid]: newReaction
+                }
+            }, { merge: true });
         } catch (error) {
             console.error("Error reacting:", error);
         }
@@ -613,6 +677,7 @@ const ChatRoom = (props) => {
     };
 
     const handleOpenActionSheet = useCallback((msg) => {
+        if (!msg) return;
         setSelectedMessageForAction({ ...msg, isSender: msg.uid === auth.currentUser.uid });
     }, [auth.currentUser.uid]);
 
@@ -697,7 +762,7 @@ const ChatRoom = (props) => {
             }
         } catch (error) {
             console.error(error);
-            alert("Failed to delete message.");
+            showAlert("Error", "Failed to delete message.");
         } finally {
             setSelectedMessageForAction(null);
         }
@@ -714,7 +779,7 @@ const ChatRoom = (props) => {
                 handleSelectUser({ id: userDoc.id, ...userData });
             }
         } else {
-            alert("No user found with that username.");
+            showAlert("Result", "No user found with that username.");
         }
     };
 
@@ -877,7 +942,8 @@ const ChatRoom = (props) => {
                 read: false,
                 ...(disappearingMode !== 'off' && {
                     expiresAt: Timestamp.fromDate(new Date(Date.now() + (disappearingMode === '24h' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000)))
-                })
+                }),
+                reactions: {}
             };
 
             await addDoc(collectionRef, messageData);
@@ -899,11 +965,14 @@ const ChatRoom = (props) => {
                 updates[`unreadCount.${otherUid}`] = increment(1);
             }
 
+            // Flag to scroll after render
+            shouldScrollBottomRef.current = true;
             await updateDoc(chatDocRef, updates);
 
         } catch (error) {
             setUploadError(`Failed to send: ${error.message}`);
-            alert(`Failed to send voice message: ${error.message}`);
+            console.error("Voice Msg Error:", error);
+            showAlert("Error", `Failed to send voice message: ${error.message}`);
         } finally {
             setIsUploading(false);
             setPendingVoiceMessage(null); // Remove temp message (real one will be in snapshot)
@@ -953,7 +1022,8 @@ const ChatRoom = (props) => {
                 read: false,
                 ...(disappearingMode !== 'off' && {
                     expiresAt: Timestamp.fromDate(new Date(Date.now() + (disappearingMode === '24h' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000)))
-                })
+                }),
+                reactions: {}
             };
 
             await addDoc(collectionRef, messageData);
@@ -976,12 +1046,16 @@ const ChatRoom = (props) => {
                 updates[`unreadCount.${otherUid}`] = increment(1);
             }
 
+            // Flag to scroll after render
+            shouldScrollBottomRef.current = true;
             await updateDoc(chatDocRef, updates);
 
-            dummy.current?.scrollIntoView({ behavior: "smooth" });
+            // Removing the old immediate scroll to rely on the effect
+            // dummy.current?.scrollIntoView({ behavior: "smooth" });
 
         } catch (error) {
-            alert(`Failed to upload media: ${error.message}`);
+            console.error(error);
+            showAlert("Upload Error", `Failed to upload media: ${error.message}`);
         } finally {
             setIsUploading(false);
             e.target.value = null; // Reset input
@@ -1007,7 +1081,11 @@ const ChatRoom = (props) => {
         setShowEmojiPicker(false);
         setReplyingTo(null);
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        setTimeout(() => dummy.current?.scrollIntoView({ behavior: "smooth" }), 10);
+
+        // Flag to scroll after render
+        shouldScrollBottomRef.current = true;
+        // Removed optimistic timeout scroll to prevent "fighting"
+        // setTimeout(() => dummy.current?.scrollIntoView({ behavior: "smooth" }), 10);
 
         try {
             const collectionRef = collection(db, "chats", chatId, "messages");
@@ -1027,7 +1105,8 @@ const ChatRoom = (props) => {
                 } : null,
                 ...(disappearingMode !== 'off' && {
                     expiresAt: Timestamp.fromDate(new Date(Date.now() + (disappearingMode === '24h' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000)))
-                })
+                }),
+                reactions: {}
             };
 
             await addDoc(collectionRef, messageData);
@@ -1071,6 +1150,8 @@ const ChatRoom = (props) => {
 
     const handleKeyDown = () => { };
 
+    // if (isMobile && !selectedUser) return null; // REMOVED: This killed the sidebar too!
+
     return (
         <div className={`chat-room ${selectedUser ? 'is-chat-selected' : ''}`}>
             <UserSearch
@@ -1080,7 +1161,10 @@ const ChatRoom = (props) => {
                 isOpen={props.isMenuOpen}
                 onClose={props.closeMenu}
             />
-            <div className="chat-box">
+            {/* Logic: On Mobile, if no user selected, Hide ChatBox so Sidebar (UserSearch) is full screen.
+                On Desktop, always show ChatBox (EmptyState or Chat).
+            */}
+            <div className="chat-box" style={{ display: (isMobile && !selectedUser) ? 'none' : undefined }}>
                 {/* Animated Background Layer */}
                 <div className="chat-bg-mesh"></div>
                 <div className="chat-bg-ambient">

@@ -17,6 +17,7 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
 
     // Modal State
     const [deleteModal, setDeleteModal] = useState({ isOpen: false, chat: null });
+    const [errorModal, setErrorModal] = useState({ isOpen: false, message: '' });
 
     // Long Press Refs
     const longPressTimer = useRef(null);
@@ -142,28 +143,49 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
         return () => unsubscribe();
     }, [currentUser]);
 
-    const handleSearch = async (e) => {
-        e.preventDefault();
-        if (searchTerm.length < 3) return;
+    // Live Search with Debounce
+    useEffect(() => {
+        const timer = setTimeout(async () => {
+            if (searchTerm.length < 1) {
+                setSearchResults([]);
+                setSearching(false);
+                return;
+            }
 
-        setSearching(true);
-        try {
-            const q = query(collection(db, "users"), where("username", "==", searchTerm.toLowerCase()));
-            const querySnapshot = await getDocs(q);
+            setSearching(true);
+            try {
+                // Determine if searching for group or user
+                // For now, simpler user search
+                const q = query(
+                    collection(db, "users"),
+                    where("username", ">=", searchTerm.toLowerCase()),
+                    where("username", "<=", searchTerm.toLowerCase() + '\uf8ff')
+                );
 
-            let results = [];
-            querySnapshot.forEach((doc) => {
-                const userData = doc.data();
-                if (userData.uid !== currentUser.uid) {
-                    results.push({ id: doc.id, ...userData });
-                }
-            });
-            setSearchResults(results);
-        } catch (err) {
-            // Search error
-        } finally {
-            setSearching(false);
-        }
+                const querySnapshot = await getDocs(q);
+                let results = [];
+                querySnapshot.forEach((doc) => {
+                    const userData = doc.data();
+                    if (userData.uid !== currentUser.uid) {
+                        results.push({ id: doc.id, ...userData });
+                    }
+                });
+
+                // Client-side strict match filter if needed, but firestore range query is okay for "starts with"
+                setSearchResults(results);
+            } catch (err) {
+                console.error("Search error:", err);
+            } finally {
+                setSearching(false);
+            }
+        }, 500); // 500ms Delay
+
+        return () => clearTimeout(timer);
+    }, [searchTerm, currentUser]);
+
+
+    const handleSearchInput = (e) => {
+        setSearchTerm(e.target.value.toLowerCase().replace(/\s/g, ''));
     };
 
     const [clearAllModal, setClearAllModal] = useState(false);
@@ -246,7 +268,8 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
             await logout();
         } catch (error) {
             console.error("Failed to log out:", error);
-            alert("Failed to log out.");
+            console.error("Failed to log out:", error);
+            setErrorModal({ isOpen: true, message: "Failed to log out. Please check your connection." });
         }
     };
 
@@ -272,18 +295,18 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
             </div>
 
             <div className="search-bar-container">
-                <form onSubmit={handleSearch} className="search-form" style={{ display: 'flex', width: '100%', alignItems: 'center', background: 'var(--glass-input)', borderRadius: '12px', padding: '0 10px' }}>
+                <div className="search-form" style={{ display: 'flex', width: '100%', alignItems: 'center', background: 'var(--glass-input)', borderRadius: '12px', padding: '0 10px' }}>
                     <input
                         type="text"
                         placeholder="Search username..."
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value.toLowerCase().replace(/\s/g, ''))}
+                        onChange={handleSearchInput}
                         style={{ background: 'transparent', border: 'none', color: 'var(--text-main)', flex: 1, padding: '12px 5px', outline: 'none' }}
                     />
-                    <button type="submit" style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem' }}>
-                        <IoSearch />
-                    </button>
-                </form>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', display: 'flex' }}>
+                        {searching ? <div className="spinner-small"></div> : <IoSearch />}
+                    </div>
+                </div>
             </div>
 
             <div className="chats-header" style={{ padding: '0 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', marginBottom: '5px' }}>
@@ -426,6 +449,34 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
                         </motion.div>
                     )}
                 </AnimatePresence>,
+                document.body
+            )}
+
+            {/* Error Modal */}
+            {errorModal.isOpen && createPortal(
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.7)', zIndex: 10000,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    backdropFilter: 'blur(5px)'
+                }} onClick={() => setErrorModal({ isOpen: false, message: '' })}>
+                    <div style={{
+                        background: '#18181b', padding: '25px', borderRadius: '16px',
+                        maxWidth: '90%', width: '300px', textAlign: 'center',
+                        border: '1px solid #27272a', boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+                    }}>
+                        <h3 style={{ color: '#ef4444', marginBottom: '10px' }}>Error</h3>
+                        <p style={{ color: '#d4d4d8', marginBottom: '20px' }}>{errorModal.message}</p>
+                        <button onClick={() => setErrorModal({ isOpen: false, message: '' })}
+                            style={{
+                                padding: '8px 20px', background: '#3f3f46',
+                                color: 'white', border: 'none', borderRadius: '8px',
+                                cursor: 'pointer', fontWeight: '500'
+                            }}>
+                            Close
+                        </button>
+                    </div>
+                </div>,
                 document.body
             )}
 
