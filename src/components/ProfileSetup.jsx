@@ -80,7 +80,7 @@ const ProfileSetup = ({ onComplete }) => {
                 avatarUrl: selectedAvatar, // Saving as avatarUrl as requested too
                 createdAt: serverTimestamp(),
                 searchKeywords: [username.toLowerCase()]
-            });
+            }, { merge: true });
             onComplete();
         } catch (err) {
             setError("Error saving profile: " + err.message);

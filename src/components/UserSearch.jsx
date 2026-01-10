@@ -10,6 +10,7 @@ import "./UserList.css";
 const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose }) => {
     const [searchTerm, setSearchTerm] = useState("");
     const [searchResults, setSearchResults] = useState([]);
+    const [searchError, setSearchError] = useState(null);
     const [searching, setSearching] = useState(false);
     const [recentChats, setRecentChats] = useState([]);
     const [loadingRecent, setLoadingRecent] = useState(true);
@@ -173,8 +174,14 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
 
                 // Client-side strict match filter if needed, but firestore range query is okay for "starts with"
                 setSearchResults(results);
+                setSearchError(null);
             } catch (err) {
                 console.error("Search error:", err);
+                if (err.code === 'unavailable' || err.message.includes('offline')) {
+                    setSearchError("Offline: Cannot search for new users.");
+                } else {
+                    setSearchError("Search failed.");
+                }
             } finally {
                 setSearching(false);
             }
@@ -183,9 +190,9 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
         return () => clearTimeout(timer);
     }, [searchTerm, currentUser]);
 
-
     const handleSearchInput = (e) => {
         setSearchTerm(e.target.value.toLowerCase().replace(/\s/g, ''));
+        setSearchError(null); // Clear previous errors on type
     };
 
     const [clearAllModal, setClearAllModal] = useState(false);
@@ -340,7 +347,11 @@ const UserSearch = ({ onSelectUser, selectedUser, isChatActive, isOpen, onClose 
                         ))}
 
                         {searching && <li className="list-status">Searching...</li>}
-                        {!searching && searchResults.length === 0 && <li className="list-status">No user found.</li>}
+                        {/* Error State */}
+                        {!searching && searchError && <li className="list-status" style={{ color: '#f87171' }}>{searchError}</li>}
+
+                        {/* Empty State (Only if no error) */}
+                        {!searching && !searchError && searchResults.length === 0 && <li className="list-status">No user found.</li>}
                     </>
                 ) : (
                     <>

@@ -1,7 +1,7 @@
 
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, enableIndexedDbPersistence, CACHE_SIZE_UNLIMITED } from "firebase/firestore";
 import { getMessaging } from "firebase/messaging";
 
 // TODO: Replace the following with your app's Firebase project configuration
@@ -24,6 +24,24 @@ if (missingKeys.length > 0) {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+// Initialize Firestore with settings
+export const db = initializeFirestore(app, {
+  cacheSizeBytes: CACHE_SIZE_UNLIMITED,
+  experimentalForceLongPolling: true,
+});
+
 export const messaging = getMessaging(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// Enable Offline Persistence
+enableIndexedDbPersistence(db)
+  .catch((err) => {
+    if (err.code == 'failed-precondition') {
+      // Multiple tabs open, persistence can only be enabled in one tab at a a time.
+      console.warn("Firestore persistence failed: Multiple tabs open.");
+    } else if (err.code == 'unimplemented') {
+      // The current browser does not support all of the features required to enable persistence
+      console.warn("Firestore persistence not supported in this browser.");
+    }
+  });

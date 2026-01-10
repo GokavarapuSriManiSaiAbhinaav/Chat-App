@@ -12,75 +12,78 @@ const MOOD_KEYWORDS = {
         'glad', 'cheerful', 'delighted', 'pleased', 'yaay', 'yippee',
         // Telugu/Tenglish
         'kirrak', 'thop', 'arachakam', 'santhosham', 'navvu', 'super ra', 'kummesavu', 'chinchavu', 'baga',
-        'santhoshamga'
+        'santhoshamga', 'pandaga', 'racha', 'mass', 'crazy', 'bavundi', 'baga cheppav'
     ],
     sad: [
         'sad', 'upset', 'bad', 'crying', 'cry', 'alone', 'hurt', 'pain', 'sorry', 'miss', 'broken',
         'dukhi', 'parishan', 'rondu', 'kastam', 'badhaga', 'baadha', 'dipper', 'tension', 'stress',
-        'feeling low', 'disappointed', '😔', '😭', '😢', '💔', '😿', 'gloomy', 'depressed', 'unhappy',
+        'feeling low', 'disappointed', '😔', '😢', '💔', 'gloomy', 'depressed', 'unhappy',
         'grief', 'tragic', 'loss',
         // Telugu/Tenglish
-        'ayyo', 'shit', 'edupu', 'noddu', 'vaddhu', 'karim', 'mood ledu', 'poyi', 'ontari'
+        'ayyo', 'shit', 'edupu', 'noddu', 'vaddhu', 'karim', 'mood ledu', 'poyi', 'ontari',
+        'daridram', 'karma', 'life mg', 'badha', 'chiraaku', 'bore', 'feel avtuna'
     ],
     angry: [
         'angry', 'hate', 'shut up', 'stop', 'mad', 'stupid', 'idiot', 'annoyed', 'pissed',
         'gussa', 'dimag kharab', 'pagal', 'kopam', 'chi', 'enough', 'useless', 'fool',
         'why', 'wtf', 'hell', 'nonsense', 'seriously', '😡', '😠', '🤬', '👊', '😤',
-        'dont want to talk', 'no more', 'leave me', 'go away', 'irritating', 'nonsense', 'rubbish',
+        'dont want to talk', 'no more', 'leave me', 'go away', 'irritating', 'trash',
         // Telugu/Tenglish
-        'musuko', 'chi', 'dengey', 'waste', 'yedava', 'donga', 'pichi', 'thikka', 'mental', 'burra'
+        'musuko', 'chi', 'dengey', 'waste', 'yedava', 'donga', 'pichi', 'thikka', 'mental', 'burra',
+        'moosuko', 'dobbaku', 'sava kottaku', 'bongu'
     ],
     excited: [
         'excited', 'cant wait', 'omg', 'eager', 'pumped', 'hyped', 'thrilled', 'woah', 'yesss',
         'hurray', 'boom', 'crazy', 'fantastic', 'fabulous', '🤩', '🥳', '🎉', '🔥', '⚡',
-        'waiting', 'dying to see', 'lets go', 'bring it on',
+        'waiting', 'lets go', 'bring it on',
         // Telugu/Tenglish
-        'vammo', 'abbo', 'suprrrr', 'wait chestunna', 'mass', 'racha'
+        'vammo', 'abbo', 'suprrrr', 'wait chestunna', 'mass', 'racha', 'thop', 'kekka', 'waiting ikkada'
     ],
     romantic: [
         'love you', 'miss you', 'darling', 'honey', 'baby', 'babe', 'sweetheart', 'jaan', 'dear',
         'kiss', 'heart', 'romance', 'passionate', 'cute', 'beautiful', 'handsome', 'sexy', 'hot',
         '😍', '😘', '🥰', '💕', '💞', '💘', 'marry', 'date', 'forever',
         // Telugu/Tenglish
-        'prema', 'priyatama', 'bangaram', 'bujji', 'chitti', 'kanna', 'pranam', 'muddu', 'miss autunna', 'naa pranam'
+        'prema', 'priyatama', 'bangaram', 'bujji', 'chitti', 'kanna', 'pranam', 'muddu', 'miss autunna',
+        'naa pranam', 'neekosam', 'pilla', 'pilaga', 'bava', 'mardhal'
     ],
     calm: [
         'calm', 'relax', 'chill', 'peace', 'peaceful', 'serene', 'quiet', 'meditate', 'zen',
         'okay', 'fine', 'no problem', 'all good', 'cool', 'steady', 'balanced', '😌', '🕊️',
         'relaxed', 'easy', 'smooth',
         // Telugu/Tenglish
-        'prashantham', 'cool', 'haayi', 'nemmadhi', 'shanthi', 'taggindi'
+        'prashantham', 'cool', 'haayi', 'nemmadhi', 'shanthi', 'taggindi', 'lite', 'parledu'
     ],
     confused: [
         'confused', 'what', 'huh', 'why', 'how', 'weird', 'strange', '?', '??', 'idk', 'dunno',
         'baffled', 'lost', 'clear', 'uncertain', 'not sure', 'doubt', 'puzzled', '🤔', '😕', '🧐',
         // Telugu/Tenglish
-        'enti', 'yenti', 'ardham kaale', 'confusion', 'emto', 'emi', 'enduku'
+        'enti', 'yenti', 'ardham kaale', 'confusion', 'emto', 'emi', 'enduku', 'em cheppali', 'telidu'
     ],
     serious: [
         'serious', 'listen', 'important', 'urgent', 'matter', 'discuss', 'focus', 'attention',
         'strictly', 'crucial', 'critical', 'no joke', 'deadly', 'severe', 'truth', 'fact', '😐', '🤐',
         // Telugu/Tenglish
-        'nijam', 'tappadu', 'avsaram', 'matter undi', 'serious ga'
+        'nijam', 'tappadu', 'avsaram', 'matter undi', 'serious ga', 'vinu'
     ],
     sarcastic: [
         'yeah right', 'sure', 'whatever', 'slow clap', 'great job', 'nice one', 'genius',
-        'obviously', 'clearly', 'wow', 'thanks a lot', 'big deal', '🙄', '😒', 'fuck off', 'clap',
+        'obviously', 'clearly', 'wow', 'thanks a lot', 'big deal', '🙄', '😒', 'clap',
         // Telugu/Tenglish
-        'avuna', 'nijama', 'great le', 'pedda', 'chal', 'lite'
+        'avuna', 'nijama', 'great le', 'pedda', 'chal', 'lite', 'aapa ra', 'saalu', 'ok le'
     ],
     supportive: [
         'there for you', 'dont worry', 'it will be ok', 'im here', 'help', 'support', 'got your back',
         'care', 'protect', 'understand', 'listening', 'proud', 'brave', 'strong', 'you can do it',
         '👍', '🤝', '🤗', '💪',
         // Telugu/Tenglish
-        'nenunna', 'nenu unna', 'bhayam vaddu', 'dhairyam', 'thodu', 'parledu'
+        'nenunna', 'nenu unna', 'bhayam vaddu', 'dhairyam', 'thodu', 'parledu', 'em kadu', 'unnaga'
     ],
     neutral: [
         'ok', 'okay', 'hmm', 'k', 'yeah', 'yes', 'no', 'see', 'check', 'done', 'will do',
         'maybe', 'fine', 'alright', 'correct', 'right',
         // Telugu/Tenglish
-        'sare', 'hamm', 'sari', 'aithe', 'chuddam'
+        'sare', 'hamm', 'sari', 'aithe', 'chuddam', 'ha', 'hoo', 'avunu'
     ]
 };
 

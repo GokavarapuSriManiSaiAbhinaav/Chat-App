@@ -71,33 +71,54 @@ const App = () => {
       if (currentUser) {
         setCheckingProfile(true);
         const docRef = doc(db, "users", currentUser.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setUserProfile(data);
-          setIsProfileSetup(true);
 
-          // Update Cache
-          localStorage.setItem('user_profile_cache', JSON.stringify(data));
-          localStorage.setItem('is_profile_setup', 'true');
+        try {
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists() && docSnap.data().username) {
+            const data = docSnap.data();
+            setUserProfile(data);
+            setIsProfileSetup(true);
 
-          if (!cachedProfile) {
-            setShowWelcome(true);
-            setTimeout(() => setShowWelcome(false), 2000); // reduced from 2500
+            // Update Cache
+            localStorage.setItem('user_profile_cache', JSON.stringify(data));
+            localStorage.setItem('is_profile_setup', 'true');
+
+            if (!cachedProfile) {
+              setShowWelcome(true);
+              setTimeout(() => setShowWelcome(false), 2000);
+            }
+
+            // Mark user as online (Background)
+            updateDoc(docRef, {
+              isOnline: true,
+              lastSeen: serverTimestamp()
+            }).catch(e => console.warn("Online status update failed (offline mode):", e));
+
+          } else {
+            // Doc might exist (keys only) or not. Incomplete profile -> Run Setup.
+            setIsProfileSetup(false);
+            setUserProfile(null);
+            localStorage.removeItem('user_profile_cache');
+            localStorage.removeItem('is_profile_setup');
           }
-
-          // Mark user as online (Background)
-          updateDoc(docRef, {
-            isOnline: true,
-            lastSeen: serverTimestamp()
-          }).catch(e => console.error("Online status update failed", e));
-        } else {
-          setIsProfileSetup(false);
-          setUserProfile(null);
-          localStorage.removeItem('user_profile_cache');
-          localStorage.removeItem('is_profile_setup');
+        } catch (error) {
+          console.error("Profile check failed (likely offline):", error);
+          // Fallback to cache if available
+          if (cachedProfile) {
+            console.log("Using cached profile.");
+            setUserProfile(cachedProfile);
+            setIsProfileSetup(true);
+          } else {
+            // If completely offline and no cache, we might still want to let them in?
+            // But if profile setup isn't done, we need that.
+            // Assume if no cache, we need setup.
+            // If we can't check setup status, we might be blocked. 
+            // But showing ProfileSetup is better than infinite loading.
+            setIsProfileSetup(!!cachedSetup);
+          }
+        } finally {
+          setCheckingProfile(false);
         }
-        setCheckingProfile(false);
       } else {
         setCheckingProfile(false);
         setShowWelcome(false);

@@ -6,7 +6,7 @@ import MoodHint from './MoodHint';
 import { detectMood } from '../utils/moodDetector';
 import UserSearch from "./UserSearch";
 import EmptyState from "./EmptyState";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc, deleteDoc, updateDoc, writeBatch, limit, getDocs, where, increment, arrayUnion, arrayRemove, deleteField, Timestamp } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc, getDocFromServer, deleteDoc, updateDoc, writeBatch, limit, getDocs, where, increment, arrayUnion, arrayRemove, deleteField, Timestamp } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { uploadToCloudinary } from "../utils/cloudinary";
 import { IoSend, IoMic, IoStop, IoTrash, IoAttach, IoArrowBack, IoClose, IoPeople, IoPersonAdd, IoPencil, IoSearch, IoChevronUp, IoChevronDown, IoStar, IoTimer } from "react-icons/io5";
@@ -15,6 +15,7 @@ const EmojiPicker = React.lazy(() => import('emoji-picker-react'));
 import AddMemberModal from './AddMemberModal';
 import { BsEmojiSmileFill } from "react-icons/bs";
 import "./ChatRoom.css";
+import { cryptoService } from "../utils/CryptoService"; // Import CryptoService
 
 const ChatRoom = (props) => {
     const { selectedUser, setSelectedUser } = props;
@@ -92,6 +93,7 @@ const ChatRoom = (props) => {
     const shouldScrollBottomRef = useRef(false); // Flag for smart auto-scroll
     const isInitialLoadRef = useRef(true); // Flag for instant initial scroll
     const shouldSendRef = useRef(true); // Ref to check if we should send or discard
+    const isUserAtBottomRef = useRef(true); // Track if user is at bottom manually
     const fileInputRef = useRef(null);
 
     // Preload Audio to prevent lag
@@ -145,97 +147,116 @@ const ChatRoom = (props) => {
         return () => unsubscribeChatDoc();
     }, [chatId, selectedUser]);
 
-    // Effect: Listen to private messages AND mark as read
+    // Effect: Listen to private messages AND verify/decrypt
     useEffect(() => {
         if (!chatId) {
             setMessages([]);
             return;
         }
 
+        // Prevent Ghost Messages: Clear state immediately when switching chats
+        setMessages([]);
+
         const collectionRef = collection(db, "chats", chatId, "messages");
-        // Use desc order to get LAST N messages, then reverse them for display
         const q = query(collectionRef, orderBy("createdAt", "desc"), limit(messagesLimit));
 
-        const unsubscribeMessages = onSnapshot(q, (querySnapshot) => {
-            let msgs = [];
-            let unreadIds = [];
+        const unsubscribeMessages = onSnapshot(q, async (querySnapshot) => {
             const currentUser = auth.currentUser;
             const now = Date.now();
+            let rawMessages = [];
+            let unreadIds = [];
 
+            // 1. Initial Pass: Filter & Collect
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
 
                 // Disappearing Messages Filter
                 if (data.expiresAt && data.expiresAt.toMillis() < now) {
-                    // Opportunistic Delete if I am the sender (to clean up DB)
-                    if (data.uid === auth.currentUser.uid) {
-                        deleteDoc(doc.ref).catch(err => console.error("Auto-delete error", err));
+                    if (data.uid === currentUser.uid) {
+                        deleteDoc(doc.ref).catch(console.error);
                     }
                     return;
                 }
 
-                // Filter out cleared messages
+                // Cleared / Deleted For Filter
                 let isCleared = false;
-                if (chatClearedAt && data.createdAt && data.createdAt.toMillis() <= chatClearedAt.toMillis()) {
-                    isCleared = true;
-                }
-
-                if (data.deletedFor && data.deletedFor.includes(auth.currentUser.uid)) {
-                    isCleared = true;
-                }
+                if (chatClearedAt && data.createdAt && data.createdAt.toMillis() <= chatClearedAt.toMillis()) isCleared = true;
+                if (data.deletedFor && data.deletedFor.includes(currentUser.uid)) isCleared = true;
 
                 if (!isCleared) {
-                    msgs.push({ ...data, id: doc.id });
-                    if (!data.read && data.uid !== currentUser.uid) {
-                        unreadIds.push(doc.id);
-                    }
+                    rawMessages.push({ ...data, id: doc.id, ref: doc.ref });
                 }
             });
 
-            // Reverse to show oldest first (since we queried desc)
-            setMessages(msgs.reverse());
+            // 2. Decryption Pass (Async)
+            const decryptedMessagesPr = rawMessages.map(async (msg) => {
+                // If message has ciphertext, decrypt it
+                if (msg.ciphertext && msg.encryptedKeys) {
+                    if (msg.encryptedKeys[currentUser.uid]) {
+                        try {
+                            const privateKey = await cryptoService.getPrivateKey(currentUser.uid);
+                            if (privateKey) {
+                                const aesKey = await cryptoService.decryptAESKey(msg.encryptedKeys[currentUser.uid], privateKey);
+                                const plaintext = await cryptoService.decryptData(msg.ciphertext, msg.iv, aesKey);
+                                msg.text = plaintext; // Hydrate text locally
 
-            // Mark unread messages as read in batch
-            if (unreadIds.length > 0 && isChatActive && document.visibilityState === 'visible') {
-                // Read Receipts Privacy Check
-                if (userSettings?.privacy?.readReceipts !== false) {
-                    const batch = writeBatch(db);
-                    unreadIds.forEach(id => {
-                        const docRef = doc(db, "chats", chatId, "messages", id);
-                        batch.update(docRef, { read: true });
-                    });
-                    batch.commit().catch(console.error);
-                }
-            }
-
-            // Notification Sounds & Vibrations (New Message from Partner)
-            if (msgs.length > 0 && messages.length > 0) {
-                const latestMsg = msgs[msgs.length - 1];
-                const isNew = latestMsg.id !== messages[messages.length - 1]?.id;
-                const isFromPartner = latestMsg.uid !== auth.currentUser.uid;
-
-                if (isNew && isFromPartner) {
-                    // Sound removed as per user request
-                    /*
-                    if (userSettings?.notifications?.sound !== false) {
-                        const audio = notificationAudioRef.current;
-                        if (audio) {
-                            audio.currentTime = 0;
-                            audio.play().catch(e => console.log("Audio play failed", e));
+                                // Decrypt Reply Context if exists
+                                if (msg.replyTo && msg.replyTo.ciphertext) {
+                                    try {
+                                        // Assuming same AES key was used for reply context
+                                        const replyText = await cryptoService.decryptData(msg.replyTo.ciphertext, msg.replyTo.iv, aesKey);
+                                        msg.replyTo.text = replyText;
+                                    } catch (e) {
+                                        msg.replyTo.text = "Error decrypting reply";
+                                    }
+                                }
+                            } else {
+                                msg.text = "🔒 Key missing";
+                            }
+                        } catch (error) {
+                            console.warn("Decryption error for msg", msg.id, error.name || error);
+                            // Any decryption error here implies we have the wrong key (or data is corrupt).
+                            // With the recent key reset, this is the most likely cause.
+                            msg.text = "⛔ Message Unreadable (Key Mismatch)";
                         }
-                    }
-                    */
-                    if (userSettings?.notifications?.vibration !== false && navigator.vibrate) {
-                        navigator.vibrate(200);
+                    } else {
+                        // Ciphertext exists but NO key for me (Self-encryption failed during send)
+                        msg.text = "🔒 Encrypted (Key Missing)";
                     }
                 }
-            }
 
-            // Scroll ONLY on initial load of this chat
-            // For subsequent updates, we let user scroll manually or handle via separate logic (e.g. only if they sent it)
-            // setTimeout(() => {
-            //    dummy.current?.scrollIntoView({ behavior: "smooth" });
-            // }, 100);
+                // Track Unread (using decrypted logic or raw, doesn't matter for count)
+                if (!msg.read && msg.uid !== currentUser.uid) {
+                    unreadIds.push(msg.id);
+                }
+
+                return msg;
+            });
+
+            const processedMessages = await Promise.all(decryptedMessagesPr);
+            // Reverse to show oldest first
+            setMessages(processedMessages.reverse());
+
+            // Mark Read
+            // Mark Read & Reset Badge
+            if (unreadIds.length > 0 && isChatActive && document.visibilityState === 'visible') {
+                const batch = writeBatch(db);
+
+                // 1. Mark individual messages as read (if allowed by privacy)
+                // Note: We might want to mark them read locally anyway, but respecting existing logic:
+                if (userSettings?.privacy?.readReceipts !== false) {
+                    unreadIds.forEach(id => {
+                        batch.update(doc(db, "chats", chatId, "messages", id), { read: true });
+                    });
+                }
+
+                // 2. ALWAYS Reset Chat Badge Count to 0 when viewing
+                batch.update(doc(db, "chats", chatId), {
+                    [`unreadCount.${currentUser.uid}`]: 0
+                });
+
+                batch.commit().catch(console.error);
+            }
         });
 
         return () => unsubscribeMessages();
@@ -265,9 +286,15 @@ const ChatRoom = (props) => {
     // Effect: Smart Scroll on New Sent Message & Initial Load
     useEffect(() => {
         if (isInitialLoadRef.current) {
-            dummy.current?.scrollIntoView({ behavior: "auto" });
-            isInitialLoadRef.current = false;
-        } else if (shouldScrollBottomRef.current) {
+            // Only reset initial load if we actually have messages to scroll to
+            if (messages.length > 0) {
+                dummy.current?.scrollIntoView({ behavior: "auto" });
+                isInitialLoadRef.current = false;
+            }
+        } else if (shouldScrollBottomRef.current || isUserAtBottomRef.current) {
+            // Auto-scroll ONLY if:
+            // 1. We just sent a message (shouldScrollBottomRef)
+            // 2. We are already looking at the newest messages (isUserAtBottomRef)
             dummy.current?.scrollIntoView({ behavior: "smooth" });
             shouldScrollBottomRef.current = false;
         }
@@ -286,6 +313,14 @@ const ChatRoom = (props) => {
         }
         return () => clearInterval(interval);
     }, [isRecording]);
+
+    // Scroll Handler to track if user is reading history
+    const handleScroll = (e) => {
+        const { scrollTop, scrollHeight, clientHeight } = e.target;
+        // User is "at bottom" if within 100px of the end
+        const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+        isUserAtBottomRef.current = isNearBottom;
+    };
 
     const formatDuration = (seconds) => {
         const mins = Math.floor(seconds / 60);
@@ -308,7 +343,7 @@ const ChatRoom = (props) => {
 
     // 1. Listen for partner's real-time status
     useEffect(() => {
-        if (!selectedUser || selectedUser.isGroup) { // Don't track status for groups
+        if (!selectedUser || !selectedUser.uid || selectedUser.isGroup) { // Don't track status for groups
             setSelectedUserData(null);
             return;
         }
@@ -361,9 +396,31 @@ const ChatRoom = (props) => {
     const handleSelectUser = useCallback(async (user) => {
         if (!user) return;
 
-        setSelectedUser(user);
+        // Resolve UID: Support objects with 'uid' or 'id' (if not group)
+        const targetUid = user.isGroup ? user.id : (user.uid || user.id);
+
+        if (!user.isGroup && !targetUid) {
+            console.error("Invalid user selected (missing uid/id):", user);
+            return;
+        }
+
+        // Normalize user object for state
+        const safeUser = { ...user, uid: targetUid };
+
+        // Removed setSelectedUser(safeUser) call to prevent infinite loop.
+        // We rely on the local 'safeUser' for internal logic.
+
+
         const currentUser = auth.currentUser;
-        const newChatId = user.isGroup ? user.id : getChatId(currentUser.uid, user.uid);
+        // If we already have a chatId (from sidebar), use it. Otherwise generate.
+        const newChatId = safeUser.chatId || (safeUser.isGroup ? safeUser.id : getChatId(currentUser.uid, targetUid));
+
+        // Prevent Re-Initialization (Reload/Flash) if chat ID hasn't changed.
+        // This handles the case where 'selectedUser' object updates (e.g. from Sidebar sorting) 
+        // but it's the same chat session.
+        if (chatId === newChatId) {
+            return;
+        }
 
         // Ensure chat document exists
         const chatDocRef = doc(db, "chats", newChatId);
@@ -408,6 +465,15 @@ const ChatRoom = (props) => {
         isInitialLoadRef.current = true;
         // setTimeout(() => dummy.current?.scrollIntoView({ behavior: "auto" }), 100);
     }, [getChatId, setSelectedUser]);
+
+
+
+    // Auto-select based on prop (Trigger initialization logic)
+    useEffect(() => {
+        if (selectedUser) {
+            handleSelectUser(selectedUser);
+        }
+    }, [selectedUser, handleSelectUser]);
 
     const handleDeleteGroup = async () => {
         setConfirmDialog({
@@ -664,15 +730,46 @@ const ChatRoom = (props) => {
     const handleUpdateMessage = async () => {
         if (!editingMessage || !formValue.trim()) return;
         try {
+            // 1. Generate New Keys (Security Best Practice: rotate key on edit) (or reuse if lazy, but cleaner to regen)
+            // Re-fetching participants to get keys
+            let participants = [auth.currentUser.uid];
+            if (selectedUser.isGroup) {
+                participants = selectedUser.members;
+            } else {
+                participants.push(selectedUser.uid);
+            }
+
+            // Fetch destination Public Keys
+            const publicKeys = {};
+            for (const uid of participants) {
+                const userDoc = await getDoc(doc(db, "users", uid));
+                if (userDoc.exists() && userDoc.data().publicKey) {
+                    publicKeys[uid] = await cryptoService.importPublicKey(userDoc.data().publicKey);
+                }
+            }
+
+            // Generate AES Key and Encrypt
+            const aesKey = await cryptoService.generateAESKey();
+            const { ciphertext, iv } = await cryptoService.encryptData(formValue, aesKey);
+
+            const encryptedKeys = {};
+            for (const uid in publicKeys) {
+                encryptedKeys[uid] = await cryptoService.encryptAESKey(aesKey, publicKeys[uid]);
+            }
+
             const msgRef = doc(db, "chats", chatId, "messages", editingMessage.id);
             await updateDoc(msgRef, {
-                text: formValue,
+                text: "", // Clear plaintext
+                ciphertext,
+                iv,
+                encryptedKeys,
                 isEdited: true
             });
             setEditingMessage(null);
             setFormValue("");
         } catch (error) {
             console.error("Error updating message:", error);
+            showAlert("Error", "Failed to update encrypted message.");
         }
     };
 
@@ -1084,25 +1181,112 @@ const ChatRoom = (props) => {
 
         // Flag to scroll after render
         shouldScrollBottomRef.current = true;
-        // Removed optimistic timeout scroll to prevent "fighting"
-        // setTimeout(() => dummy.current?.scrollIntoView({ behavior: "smooth" }), 10);
 
         try {
+            // --- ENCRYPTION LOGIC START ---
+            // 1. Identify Recipients
+            let participants = [uid]; // Include self
+            if (selectedUser.isGroup) {
+                participants = [...new Set([...participants, ...(selectedUser.members || [])])];
+            } else {
+                participants.push(selectedUser.uid);
+            }
+
+            // 2. Fetch Public Keys
+            const publicKeys = {};
+            // Optimization: Prioritize Server Fetch to ensure we get the latest keys (crucial after resets)
+            const userDocsSnap = await Promise.all(participants.map(async pUid => {
+                const userRef = doc(db, "users", pUid);
+                try {
+                    // Force server fetch
+                    return await getDocFromServer(userRef);
+                } catch (e) {
+                    // Fallback to cache (Offline)
+                    return await getDoc(userRef);
+                }
+            }));
+
+            for (const snap of userDocsSnap) {
+                if (snap.exists() && snap.data().publicKey) {
+                    try {
+                        publicKeys[snap.id] = await cryptoService.importPublicKey(snap.data().publicKey);
+                    } catch (err) {
+                        console.warn(`Invalid key for user ${snap.id}`);
+                    }
+                }
+            }
+
+            // FORCE use of Local Public Key for Self (Avoids stale server data after reset)
+            try {
+                const localJwk = await cryptoService.getPublicKey(uid);
+                if (localJwk) {
+                    publicKeys[uid] = await cryptoService.importPublicKey(localJwk);
+                    console.log("Verified local public key for self-encryption.");
+                } else {
+                    throw new Error("Your Encryption Keys are missing. Please Clear Browser Data and Log In again to fix this.");
+                }
+            } catch (e) {
+                console.error("Local key retrieval failed:", e);
+                showAlert("Encryption Error", e.message || "Failed to retrieve encryption keys.");
+                return;
+            }
+
+            // SAFETY CHECK: Ensure we have keys for ALL participants
+            const missingKeys = participants.filter(pUid => !publicKeys[pUid]);
+            if (missingKeys.length > 0) {
+                console.warn("Missing public keys for:", missingKeys);
+                // Try to find a name for the error message
+                const missingName = selectedUser.isGroup ? "some members" : (selectedUser.displayName || "Recipient");
+                showAlert("Security Alert", `Cannot encrypt for ${missingName}. Their security keys are not ready. Ask them to reload or log in again.`);
+                return;
+            }
+
+            // 3. Generate Session Key (AES)
+            const aesKey = await cryptoService.generateAESKey();
+
+            // 4. Encrypt Message Content
+            const { ciphertext, iv } = await cryptoService.encryptData(textToSend, aesKey);
+
+            // 5. Encrypt AES Key for each recipient
+            const encryptedKeys = {};
+            for (const pUid of participants) {
+                if (publicKeys[pUid]) {
+                    encryptedKeys[pUid] = await cryptoService.encryptAESKey(aesKey, publicKeys[pUid]);
+                }
+            }
+
+            // 6. Encrypt Reply Content if exists
+            let encryptedReply = null;
+            if (replyContext) {
+                // We encrypt the reply text using the SAME AES key for efficiency/simplicity
+                // The receiver will unlock the AES key and can decrypt this too.
+                const replyTextToEncrypt = replyContext.text || "Media";
+                const encryptedReplyData = await cryptoService.encryptData(replyTextToEncrypt, aesKey);
+
+                encryptedReply = {
+                    id: replyContext.id,
+                    displayName: replyContext.displayName, // Plaintext is fine for name
+                    type: replyContext.type,
+                    ciphertext: encryptedReplyData.ciphertext,
+                    iv: encryptedReplyData.iv,
+                    text: null // Do not store plaintext
+                };
+            }
+            // --- ENCRYPTION LOGIC END ---
+
             const collectionRef = collection(db, "chats", chatId, "messages");
             const chatDocRef = doc(db, "chats", chatId);
 
             const messageData = {
-                text: textToSend,
+                text: "", // NO PLAINTEXT
+                ciphertext,
+                iv,
+                encryptedKeys,
                 createdAt: serverTimestamp(),
                 uid: auth.currentUser.uid,
                 photoURL: auth.currentUser.photoURL,
                 type: 'text',
-                replyTo: replyContext ? {
-                    id: replyContext.id,
-                    text: replyContext.text || "Media",
-                    displayName: replyContext.displayName || "User",
-                    type: replyContext.type
-                } : null,
+                replyTo: encryptedReply,
                 ...(disappearingMode !== 'off' && {
                     expiresAt: Timestamp.fromDate(new Date(Date.now() + (disappearingMode === '24h' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000)))
                 }),
@@ -1115,12 +1299,11 @@ const ChatRoom = (props) => {
             const updates = {
                 [`typing.${uid}`]: false,
                 lastInteraction: serverTimestamp(),
-                lastMessage: textToSend, // Sync lastMessage
-                hiddenFor: [] // Ensure chat is visible to all members (un-delete/un-clear)
+                lastMessage: "🔒 Ecrypted Message", // Generic Last Msg
+                hiddenFor: []
             };
 
             if (selectedUser.isGroup) {
-                // Increment unread for all members EXCEPT current user
                 selectedUser.members?.forEach(mUid => {
                     if (mUid !== uid) {
                         updates[`unreadCount.${mUid}`] = increment(1);
@@ -1133,10 +1316,9 @@ const ChatRoom = (props) => {
 
             await updateDoc(chatDocRef, updates);
 
-
-
         } catch (error) {
-            // Error handling
+            console.error("Send Message Error:", error);
+            showAlert("Error", "Failed to send encrypted message.");
         }
     };
 
@@ -1155,7 +1337,7 @@ const ChatRoom = (props) => {
     return (
         <div className={`chat-room ${selectedUser ? 'is-chat-selected' : ''}`}>
             <UserSearch
-                onSelectUser={handleSelectUser}
+                onSelectUser={setSelectedUser}
                 selectedUser={selectedUser}
                 isChatActive={!!selectedUser}
                 isOpen={props.isMenuOpen}
@@ -1356,7 +1538,7 @@ const ChatRoom = (props) => {
                                 </div>
                             </div>
                         ) : (
-                            <div className="messages-area" onClick={() => setShowEmojiPicker(false)}>
+                            <div className="messages-area" onClick={() => setShowEmojiPicker(false)} onScroll={handleScroll}>
                                 <div className="messages-container">
                                     {messages.length >= messagesLimit && (
                                         <button onClick={loadMoreMessages} style={{
